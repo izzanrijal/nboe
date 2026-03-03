@@ -9,6 +9,8 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import StationDisplay from "./pages/StationDisplay";
+import ExamMobile from "./pages/ExamMobile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route path="/station/:token" element={<StationDisplay />} />
+            <Route path="/exam/:sessionId" element={<ExamMobile />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
