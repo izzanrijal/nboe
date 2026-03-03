@@ -20,6 +20,8 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const SESSION_FLAG = "osce_session_active";
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -38,7 +40,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        if (event === "SIGNED_IN") {
+          sessionStorage.setItem(SESSION_FLAG, "true");
+        }
+        if (event === "SIGNED_OUT") {
+          sessionStorage.removeItem(SESSION_FLAG);
+        }
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -51,6 +59,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // One-time session: if there's a persisted session but no sessionStorage flag,
+      // it means the user closed all tabs and reopened — sign them out.
+      if (session && !sessionStorage.getItem(SESSION_FLAG)) {
+        supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -63,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
+    sessionStorage.removeItem(SESSION_FLAG);
     await supabase.auth.signOut();
   };
 
