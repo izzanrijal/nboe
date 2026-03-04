@@ -17,6 +17,8 @@ interface ClinicalCase {
   initial_prompt: string;
   checklist_rubric: any;
   time_limit_seconds: number;
+  reading_time_seconds: number;
+  questions_text: string;
 }
 
 const CaseManager = () => {
