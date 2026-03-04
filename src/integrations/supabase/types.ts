@@ -16,25 +16,31 @@ export type Database = {
     Tables: {
       case_assets: {
         Row: {
+          answer_text: string
           asset_type: string
           asset_url: string
           case_id: string
+          category: string
           created_at: string
           id: string
           trigger_keywords: string[]
         }
         Insert: {
+          answer_text?: string
           asset_type?: string
           asset_url: string
           case_id: string
+          category?: string
           created_at?: string
           id?: string
           trigger_keywords?: string[]
         }
         Update: {
+          answer_text?: string
           asset_type?: string
           asset_url?: string
           case_id?: string
+          category?: string
           created_at?: string
           id?: string
           trigger_keywords?: string[]
