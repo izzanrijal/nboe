@@ -1,31 +1,84 @@
 
 
-# Fix: PC Display Issues & AI Hallucination
+# Fix: Auto-regenerate Session Fails on Station Display
 
-## 3 Issues Identified
+## Root Cause
 
-### 1. PC Station doesn't stop when candidate finishes
-The polling fallback (3s) detects `status === "completed"` and calls `autoRegenerateSession` — which creates a **new** session and shows QR. This technically works, but the transition happens so fast the admin might not notice the exam ended. The real issue is that the station **auto-regenerates immediately**, making it seem like the exam never stopped.
+The Station Display page (`/station/:token`) runs **without authentication** -- it's a public screen. The `autoRegenerateSession` function tries to `INSERT` a new row into `exam_sessions`, but the RLS policies on that table only allow inserts via the "Admins manage sessions" policy (requires admin role). Since the station page has no authenticated user, the insert is silently rejected by RLS, leaving the page stuck on "Ujian Selesai".
 
-**Fix**: Add a brief "Ujian Selesai" screen (5 seconds) before auto-regenerating. This gives clear visual feedback that the exam ended.
+Additionally, the polling fallback (every 3s) keeps detecting `status === "completed"` and fires `autoRegenerateSession` multiple times, compounding the issue.
 
-### 2. Case media covers examination assets (scroll needed)
-`StationDisplay` renders case media AND active examination assets in a vertical stack (lines 206-216). When both exist, the page overflows and requires scrolling, causing the admin to miss the examination asset.
+## Solution
 
-**Fix**: When an `activeAsset` is present, **hide case media and case prompt** — show only the active examination asset in full screen. When no examination is active, show case media as before.
+### 1. Create a database function with SECURITY DEFINER to regenerate sessions
 
-### 3. AI hallucination on thorax photo
-The system prompt rule 1 says: "berikan hasil/jawaban singkat dan faktual" for examination assets. The AI interprets this as an invitation to **generate** clinical findings for the image, even though no interpretation text was provided. The AI has no access to the actual image — it's hallucinating.
+Create a Postgres function `regenerate_station_session(case_id, new_token)` that:
+- Inserts a new `exam_sessions` row with `status = 'waiting'`
+- Runs as `SECURITY DEFINER` so it bypasses RLS
+- Returns the new session row
 
-**Fix**: Change the system prompt to explicitly instruct the AI that for examination assets (which have media), it should ONLY say the media is being displayed on screen and NOT generate any interpretation or findings. Interpretations should only come from `answer_text` in additional_info assets.
+### 2. Call the function via `supabase.rpc()` in StationDisplay
+
+Replace the direct `.insert()` in `autoRegenerateSession` with `supabase.rpc('regenerate_station_session', { ... })`.
+
+### 3. Prevent duplicate regeneration calls
+
+Add a `regeneratingRef` guard so `autoRegenerateSession` only runs once, preventing the polling from triggering it repeatedly.
+
+### 4. Add try/catch for error visibility
+
+Wrap the regeneration in try/catch and log errors to console.
 
 ## Files to Modify
 
-- **`src/pages/StationDisplay.tsx`**
-  - Add `"completed_screen"` state that shows "Ujian Selesai" for 5s before auto-regenerating
-  - When `activeAsset` exists, hide `CasePromptDisplay` and `caseMedia`, show only the active asset full-screen
+- **Database migration**: Create `regenerate_station_session` function
+- **`src/pages/StationDisplay.tsx`**: Use `rpc()` instead of `.insert()`, add duplicate-call guard and error handling
 
-- **`supabase/functions/exam-chat/index.ts`**
-  - Update system prompt rule 1: for examination assets, tell AI to ONLY confirm the media is being displayed, do NOT generate interpretations
-  - Add explicit rule: "Kamu TIDAK BISA melihat gambar/video. Jangan membuat interpretasi atau deskripsi media."
+## Technical Details
+
+```sql
+CREATE OR REPLACE FUNCTION public.regenerate_station_session(
+  _case_id uuid,
+  _new_token text
+)
+RETURNS TABLE(id uuid, case_id uuid, status text, session_start_time timestamptz)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  INSERT INTO public.exam_sessions (case_id, station_token, status)
+  VALUES (_case_id, _new_token, 'waiting')
+  RETURNING exam_sessions.id, exam_sessions.case_id, exam_sessions.status, exam_sessions.session_start_time;
+END;
+$$;
+```
+
+```typescript
+// StationDisplay.tsx changes
+const regeneratingRef = useRef(false);
+
+const autoRegenerateSession = useCallback(async (caseId: string) => {
+  if (regeneratingRef.current) return;
+  regeneratingRef.current = true;
+  try {
+    const newToken = nanoid(10);
+    const { data, error } = await supabase.rpc('regenerate_station_session', {
+      _case_id: caseId,
+      _new_token: newToken,
+    });
+    if (error || !data?.[0]) { regeneratingRef.current = false; return; }
+    setSession(data[0]);
+    setCurrentToken(newToken);
+    setActiveAsset(null);
+    setCaseData(null);
+    setState("waiting");
+    window.history.replaceState(null, "", `/station/${newToken}`);
+  } catch (e) {
+    console.error("Failed to regenerate session:", e);
+    regeneratingRef.current = false;
+  }
+}, []);
+```
 
