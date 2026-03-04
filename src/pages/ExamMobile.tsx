@@ -89,14 +89,12 @@ const ExamMobile = () => {
         }
       }
 
-      // Claim session
-      const now = new Date().toISOString();
+      // Claim session — do NOT set session_start_time yet (timer starts after reading)
       const { error } = await supabase
         .from("exam_sessions")
         .update({
           status: "active",
           current_candidate_id: user.id,
-          session_start_time: now,
         })
         .eq("id", sessionId);
 

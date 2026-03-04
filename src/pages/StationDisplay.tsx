@@ -55,7 +55,7 @@ const StationDisplay = () => {
 
       if (error || !data) { setState("loading"); return; }
       setSession(data);
-      if (data.status === "active" && data.session_start_time) setState("active");
+      if (data.status === "active") setState("active");
       else if (data.status === "completed" || data.status === "force_closed") {
         setState("completed_screen");
         setTimeout(() => autoRegenerateSession(data.case_id), 5000);
@@ -90,7 +90,7 @@ const StationDisplay = () => {
 
     const updateFromRow = (updated: any) => {
       setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
-      if (updated.status === "active" && updated.session_start_time) setState("active");
+      if (updated.status === "active") setState("active");
       else if (updated.status === "completed" || updated.status === "force_closed") {
         setState("completed_screen");
         if (session?.case_id) {
