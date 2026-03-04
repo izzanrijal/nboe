@@ -40,6 +40,7 @@ const StationDisplay = () => {
   const [activeAsset, setActiveAsset] = useState<AssetData | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [currentToken, setCurrentToken] = useState(token);
+  const regeneratingRef = useRef(false);
 
   // Fetch session by token
   useEffect(() => {
@@ -66,21 +67,28 @@ const StationDisplay = () => {
   }, [currentToken]);
 
   const autoRegenerateSession = useCallback(async (caseId: string) => {
-    const newToken = nanoid(10);
-    const { data, error } = await supabase
-      .from("exam_sessions")
-      .insert({ case_id: caseId, station_token: newToken, status: "waiting" })
-      .select("id, case_id, status, session_start_time")
-      .single();
-
-    if (data && !error) {
-      setSession(data);
+    if (regeneratingRef.current) return;
+    regeneratingRef.current = true;
+    try {
+      const newToken = nanoid(10);
+      const { data, error } = await (supabase.rpc as any)('regenerate_station_session', {
+        _case_id: caseId,
+        _new_token: newToken,
+      });
+      if (error || !data?.[0]) {
+        console.error("Regenerate session failed:", error);
+        regeneratingRef.current = false;
+        return;
+      }
+      setSession(data[0]);
       setCurrentToken(newToken);
       setActiveAsset(null);
       setCaseData(null);
       setState("waiting");
-      // Update URL without reload
       window.history.replaceState(null, "", `/station/${newToken}`);
+    } catch (e) {
+      console.error("Failed to regenerate session:", e);
+      regeneratingRef.current = false;
     }
   }, []);
 
