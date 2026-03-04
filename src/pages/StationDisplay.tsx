@@ -36,6 +36,7 @@ const StationDisplay = () => {
   const [session, setSession] = useState<SessionData | null>(null);
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [assets, setAssets] = useState<AssetData[]>([]);
+  const [caseMedia, setCaseMedia] = useState<{ asset_url: string; asset_type: string }[]>([]);
   const [activeAsset, setActiveAsset] = useState<AssetData | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [currentToken, setCurrentToken] = useState(token);
@@ -109,8 +110,11 @@ const StationDisplay = () => {
     const fetchCase = async () => {
       const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds").eq("id", session.case_id).single();
       if (data) setCaseData(data);
-      const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords").eq("case_id", session.case_id);
-      if (assetData) setAssets(assetData);
+      const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords, category").eq("case_id", session.case_id);
+      if (assetData) {
+        setAssets(assetData.filter((a: any) => a.category === "examination"));
+        setCaseMedia(assetData.filter((a: any) => a.category === "case_media"));
+      }
     };
     fetchCase();
   }, [state, session?.case_id]);
@@ -184,6 +188,13 @@ const StationDisplay = () => {
       )}
       <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
         {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
+        {caseMedia.length > 0 && (
+          <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
+            {caseMedia.map((media, idx) => (
+              <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
+            ))}
+          </div>
+        )}
         {activeAsset && <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />}
       </div>
     </div>
