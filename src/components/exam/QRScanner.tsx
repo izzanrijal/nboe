@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 interface QRScannerProps {
   onScan: (sessionId: string) => void;
@@ -11,6 +12,8 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
   const containerRef = useRef<string>("qr-reader-" + Math.random().toString(36).slice(2));
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+  const [navigating, setNavigating] = useState(false);
+  const scannedRef = useRef(false);
 
   const startScanner = async () => {
     try {
@@ -21,20 +24,25 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
       await scanner.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          // Extract session ID from URL like /exam/{sessionId}
+        async (decodedText) => {
+          if (scannedRef.current) return;
           const match = decodedText.match(/\/exam\/([a-zA-Z0-9-]+)/);
           if (match) {
-            scanner.stop().catch(() => {});
-            onScan(match[1]);
+            scannedRef.current = true;
+            setNavigating(true);
+            try {
+              await scanner.stop();
+            } catch {}
+            // Small delay to let DOM clean up
+            setTimeout(() => onScan(match[1]), 100);
           }
         },
-        () => {} // ignore scan failures
+        () => {}
       );
 
       setStarted(true);
     } catch (err: any) {
-      setError(err?.message || "Failed to start camera");
+      setError(err?.message || "Gagal membuka kamera");
     }
   };
 
@@ -44,11 +52,20 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
     };
   }, []);
 
+  if (navigating) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-muted-foreground">Memuat sesi ujian...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-6">
       <h1 className="text-2xl font-bold text-foreground">Scan Station QR Code</h1>
       <p className="text-muted-foreground text-sm text-center">
-        Point your camera at the QR code on the display screen
+        Arahkan kamera ke QR code pada layar display
       </p>
 
       <div
@@ -59,7 +76,7 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
 
       {!started && (
         <Button onClick={startScanner} size="lg">
-          Open Camera
+          Buka Kamera
         </Button>
       )}
 

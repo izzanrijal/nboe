@@ -19,6 +19,7 @@ const ExamMobile = () => {
 
   const [step, setStep] = useState<ExamStep>("gatekeeper");
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  const [validating, setValidating] = useState(false);
   const [sessionData, setSessionData] = useState<{
     session_start_time: string;
     time_limit_seconds: number;
@@ -40,7 +41,9 @@ const ExamMobile = () => {
       if (!sessionId || !user) return;
 
       setAudioStream(stream);
+      setValidating(true);
 
+      try {
       // Check for duplicate
       const { data: currentSession } = await supabase
         .from("exam_sessions")
@@ -98,12 +101,18 @@ const ExamMobile = () => {
         .eq("id", sessionId);
 
       if (error) {
-        toast.error("Failed to start session. It may already be in use.");
+        toast.error("Gagal memulai sesi. Sesi mungkin sudah digunakan.");
+        setValidating(false);
         return;
       }
 
       // Go to reading phase
       setStep("reading");
+      } catch (err) {
+        console.error("Error during session setup:", err);
+        toast.error("Terjadi kesalahan. Silakan coba lagi.");
+        setValidating(false);
+      }
     },
     [sessionId, user]
   );
@@ -162,6 +171,14 @@ const ExamMobile = () => {
   }
 
   if (step === "gatekeeper") {
+    if (validating) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
+          <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full" />
+          <p className="text-muted-foreground">Memvalidasi sesi ujian...</p>
+        </div>
+      );
+    }
     return <AudioGatekeeper onReady={handleAudioReady} />;
   }
 
