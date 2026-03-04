@@ -81,19 +81,20 @@ ${caseData.initial_prompt}
 
 ${caseData.questions_text ? `SOAL:\n${caseData.questions_text}` : ""}
 
-PEMERIKSAAN YANG TERSEDIA (memiliki media untuk ditampilkan):
+PEMERIKSAAN YANG TERSEDIA (memiliki media untuk ditampilkan di layar):
 ${availableExams || "Tidak ada pemeriksaan yang tersedia."}
 
 INFORMASI TAMBAHAN YANG TERSEDIA:
 ${additionalInfo || "Tidak ada informasi tambahan."}
 
 ATURAN:
-1. Jika kandidat meminta pemeriksaan fisik/penunjang yang ADA di daftar PEMERIKSAAN, berikan hasil/jawaban singkat dan faktual.
-2. Jika kandidat bertanya tentang sesuatu yang ADA di INFORMASI TAMBAHAN, gunakan jawaban yang sudah disediakan.
-3. Jika pemeriksaan/informasi TIDAK ADA di kedua daftar, katakan "Pemeriksaan/informasi tersebut tidak tersedia dalam skenario ini."
-4. Jika kandidat bertanya tentang anamnesis lanjutan, berikan jawaban singkat sesuai konteks kasus atau informasi tambahan.
-5. Jangan memberikan diagnosis langsung atau jawaban soal. Kamu hanya menyediakan data tambahan.
-6. Jawab dalam bahasa yang sama dengan kandidat. Singkat dan to the point.`;
+1. Jika kandidat meminta pemeriksaan fisik/penunjang yang ADA di daftar PEMERIKSAAN, HANYA katakan bahwa hasil pemeriksaan sedang ditampilkan di layar monitor. Contoh: "Hasil foto thorax sedang ditampilkan di layar." JANGAN memberikan interpretasi, deskripsi, atau temuan klinis apapun dari media tersebut.
+2. Kamu TIDAK BISA melihat gambar, foto, atau video. Jangan pernah membuat interpretasi, deskripsi, atau temuan klinis dari media apapun. Jika kandidat bertanya tentang interpretasi media, katakan "Silakan lihat hasil pemeriksaan di layar monitor."
+3. Jika kandidat bertanya tentang sesuatu yang ADA di INFORMASI TAMBAHAN, gunakan jawaban yang sudah disediakan secara verbatim.
+4. Jika pemeriksaan/informasi TIDAK ADA di kedua daftar, katakan "Pemeriksaan/informasi tersebut tidak tersedia dalam skenario ini."
+5. Jika kandidat bertanya tentang anamnesis lanjutan, berikan jawaban singkat sesuai konteks kasus atau informasi tambahan.
+6. Jangan memberikan diagnosis langsung atau jawaban soal. Kamu hanya menyediakan data tambahan.
+7. Jawab dalam bahasa yang sama dengan kandidat. Singkat dan to the point.`;
 
     // Check keyword match — only for examination assets (which have media)
     let assetMatch = null;
