@@ -57,6 +57,7 @@ export type Database = {
       }
       clinical_cases: {
         Row: {
+          answer_key_text: string
           checklist_rubric: Json
           created_at: string
           created_by: string | null
@@ -69,6 +70,7 @@ export type Database = {
           title: string
         }
         Insert: {
+          answer_key_text?: string
           checklist_rubric?: Json
           created_at?: string
           created_by?: string | null
@@ -81,6 +83,7 @@ export type Database = {
           title: string
         }
         Update: {
+          answer_key_text?: string
           checklist_rubric?: Json
           created_at?: string
           created_by?: string | null
