@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import StationDisplay from "./pages/StationDisplay";
+import ExamEntry from "./pages/ExamEntry";
 import ExamMobile from "./pages/ExamMobile";
 import NotFound from "./pages/NotFound";
 
@@ -35,6 +36,7 @@ const App = () => (
               }
             />
             <Route path="/station/:token" element={<StationDisplay />} />
+            <Route path="/exam" element={<ExamEntry />} />
             <Route path="/exam/:sessionId" element={<ExamMobile />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -24,9 +24,9 @@ const CandidateRegistration = ({ onComplete }: CandidateRegistrationProps) => {
 
     setLoading(true);
     try {
-      // Sign up or sign in with email (using OTP-less password)
-      const password = `candidate_${dob}_${Date.now()}`;
-      
+      // Deterministic password so returning candidates can sign in
+      const password = `candidate_${email}_${dob}`;
+
       // Try sign up first
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
@@ -39,15 +39,14 @@ const CandidateRegistration = ({ onComplete }: CandidateRegistrationProps) => {
       let userId: string | undefined;
 
       if (signUpError) {
-        // If user exists, try sign in
+        // If user exists, try sign in with same deterministic password
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        
+
         if (signInError) {
-          // Try with a simpler password pattern for returning candidates
-          toast.error("Unable to authenticate. Please contact the examiner.");
+          toast.error("Unable to authenticate. Please verify your details or contact the examiner.");
           setLoading(false);
           return;
         }
@@ -62,7 +61,7 @@ const CandidateRegistration = ({ onComplete }: CandidateRegistrationProps) => {
         return;
       }
 
-      // Update profile
+      // Update profile with DOB
       await supabase
         .from("profiles")
         .upsert({ id: userId, full_name: fullName, email, dob }, { onConflict: "id" });
@@ -71,6 +70,9 @@ const CandidateRegistration = ({ onComplete }: CandidateRegistrationProps) => {
       await supabase
         .from("user_roles")
         .upsert({ user_id: userId, role: "candidate" as const }, { onConflict: "user_id,role" });
+
+      // Set session flag for one-time session
+      sessionStorage.setItem("osce_session_active", "true");
 
       onComplete(userId);
     } catch (err) {
