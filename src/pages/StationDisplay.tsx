@@ -86,6 +86,7 @@ const StationDisplay = () => {
       setCaseData(null);
       setState("waiting");
       window.history.replaceState(null, "", `/station/${newToken}`);
+      regeneratingRef.current = false; // Reset for next cycle
     } catch (e) {
       console.error("Failed to regenerate session:", e);
       regeneratingRef.current = false;
@@ -97,6 +98,7 @@ const StationDisplay = () => {
     if (!session?.id) return;
 
     const updateFromRow = (updated: any) => {
+      if (regeneratingRef.current) return; // Don't override if regenerating
       setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
       if (updated.status === "active") setState("active");
       else if (updated.status === "completed" || updated.status === "force_closed") {
