@@ -6,7 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, Trash2 } from "lucide-react";
+import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, Trash2, Volume2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Json } from "@/integrations/supabase/types";
 
 interface ScoreItem {
@@ -80,16 +81,35 @@ const ResultsViewer = () => {
     },
   });
 
+  const deleteAudioMutation = useMutation({
+    mutationFn: async ({ resultId, audioUrl }: { resultId: string; audioUrl: string }) => {
+      const { error: storageError } = await supabase.storage
+        .from("exam-audio")
+        .remove([audioUrl]);
+      if (storageError) console.warn("Failed to delete audio file:", storageError);
+      const { error } = await supabase
+        .from("exam_results")
+        .update({ audio_file_url: null })
+        .eq("id", resultId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exam_results_admin"] });
+      toast({ title: "Audio berhasil dihapus" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Gagal menghapus audio", description: e.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async ({ resultId, audioUrl }: { resultId: string; audioUrl: string | null }) => {
-      // Delete audio file from storage if exists
       if (audioUrl) {
         const { error: storageError } = await supabase.storage
           .from("exam-audio")
           .remove([audioUrl]);
         if (storageError) console.warn("Failed to delete audio file:", storageError);
       }
-      // Delete the exam result row
       const { error } = await supabase
         .from("exam_results")
         .delete()
@@ -186,15 +206,26 @@ const ResultsViewer = () => {
                         <Badge variant={scoreDisplay.variant}>{scoreDisplay.label}</Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={evaluateMutation.isPending}
-                          onClick={(e) => { e.stopPropagation(); evaluateMutation.mutate(r.id); }}
-                        >
-                          {evaluateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
-                          Evaluate
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={evaluateMutation.isPending || !r.audio_file_url}
+                                  onClick={(e) => { e.stopPropagation(); evaluateMutation.mutate(r.id); }}
+                                >
+                                  {evaluateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+                                  Evaluate
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            {!r.audio_file_url && (
+                              <TooltipContent>Audio telah dihapus, evaluasi tidak dapat dijalankan ulang</TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
                         <Button
                           variant="destructive"
                           size="sm"
@@ -220,7 +251,23 @@ const ResultsViewer = () => {
                           <div className="space-y-4">
                             {r.audio_file_url && (
                               <div>
-                                <h4 className="text-sm font-semibold mb-1">Audio Recording</h4>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="text-sm font-semibold">Audio Recording</h4>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive"
+                                    disabled={deleteAudioMutation.isPending}
+                                    onClick={() => {
+                                      if (confirm("Hapus file audio secara permanen? Transcript dan hasil AI tetap tersimpan.")) {
+                                        deleteAudioMutation.mutate({ resultId: r.id, audioUrl: r.audio_file_url });
+                                      }
+                                    }}
+                                  >
+                                    {deleteAudioMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Volume2 className="h-3.5 w-3.5 mr-1" />}
+                                    Hapus Audio
+                                  </Button>
+                                </div>
                                 {audioUrls[r.id] ? (
                                   <audio controls src={audioUrls[r.id]} className="w-full max-w-md" />
                                 ) : (
