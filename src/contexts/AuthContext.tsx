@@ -20,8 +20,6 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-const SESSION_FLAG = "osce_session_active";
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -38,59 +36,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAdmin(!!data);
   };
 
+  // Separate effect to check admin role whenever user changes
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === "SIGNED_IN") {
-          sessionStorage.setItem(SESSION_FLAG, "true");
-        }
-        if (event === "SIGNED_OUT") {
-          sessionStorage.removeItem(SESSION_FLAG);
-        }
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await checkAdminRole(session.user.id);
-        } else {
-          setIsAdmin(false);
-        }
-        setLoading(false);
-      }
-    );
+    if (user?.id) {
+      checkAdminRole(user.id);
+    } else {
+      setIsAdmin(false);
+    }
+  }, [user?.id]);
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      // One-time session enforcement:
-      // Only enforce on protected routes (admin login sessions).
-      // Check current path — if we're on /station or /exam, skip the sign-out.
-      const currentPath = window.location.pathname;
-      const isPublicRoute = currentPath.startsWith("/station") || currentPath.startsWith("/exam");
+  useEffect(() => {
+    let mounted = true;
 
-      if (session && !sessionStorage.getItem(SESSION_FLAG) && !isPublicRoute) {
-        // User closed all tabs and reopened on a protected route — sign them out
-        supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      // For public routes or valid sessions, proceed normally
-      if (session) {
-        sessionStorage.setItem(SESSION_FLAG, "true");
-      }
+    // 1. Initialize from existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        await checkAdminRole(session.user.id);
+        checkAdminRole(session.user.id).finally(() => {
+          if (mounted) setLoading(false);
+        });
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // 2. Listen for auth changes (no async ops inside callback)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!mounted) return;
+        setSession(session);
+        setUser(session?.user ?? null);
+        // Admin role check handled by the useEffect above
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
-    sessionStorage.removeItem(SESSION_FLAG);
     await supabase.auth.signOut();
   };
 
