@@ -8,10 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Rocket, Copy, Trash2 } from "lucide-react";
+import { Rocket, Copy, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+
+const PAGE_SIZE = 10;
 
 const SessionManager = () => {
   const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -24,17 +27,24 @@ const SessionManager = () => {
     },
   });
 
-  const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ["exam_sessions"],
+  const { data: sessionsResult, isLoading } = useQuery({
+    queryKey: ["exam_sessions", page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data, error, count } = await supabase
         .from("exam_sessions")
-        .select("*, clinical_cases(title)")
-        .order("created_at", { ascending: false });
+        .select("*, clinical_cases(title), profiles!exam_sessions_current_candidate_id_fkey(full_name, nim)", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
       if (error) throw error;
-      return data;
+      return { sessions: data || [], total: count || 0 };
     },
   });
+
+  const sessions = sessionsResult?.sessions || [];
+  const totalPages = Math.ceil((sessionsResult?.total || 0) / PAGE_SIZE);
 
   const deployMutation = useMutation({
     mutationFn: async () => {
@@ -99,42 +109,82 @@ const SessionManager = () => {
         ) : sessions.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">No sessions yet. Deploy a case above.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Case</TableHead>
-                <TableHead>Token</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.map((s: any) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.clinical_cases?.title ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-xs">{s.station_token}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusColor(s.status)}>{s.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/station/${s.station_token}`);
-                        toast({ title: "URL copied" });
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(s.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Case</TableHead>
+                  <TableHead>Participant</TableHead>
+                  <TableHead>Token</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {sessions.map((s: any) => (
+                  <TableRow key={s.id}>
+                    <TableCell>{s.clinical_cases?.title ?? "—"}</TableCell>
+                    <TableCell>
+                      {s.profiles ? (
+                        <div>
+                          <span className="font-medium">{s.profiles.full_name}</span>
+                          {s.profiles.nim && (
+                            <span className="text-xs text-muted-foreground ml-1">({s.profiles.nim})</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{s.station_token}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusColor(s.status)}>{s.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/station/${s.station_token}`);
+                          toast({ title: "URL copied" });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(s.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -5,7 +5,19 @@ import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
 import useAntiCheat from "@/hooks/useAntiCheat";
 import { toast } from "sonner";
-import { Mic, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Mic, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface ExamActiveViewProps {
   sessionId: string;
@@ -13,6 +25,9 @@ interface ExamActiveViewProps {
   timeLimitSeconds: number;
   candidateId: string;
   audioStream: MediaStream;
+  caseTitle?: string;
+  casePrompt?: string;
+  questionsText?: string;
   onForceClose: () => void;
   onComplete: () => void;
 }
@@ -21,6 +36,7 @@ interface ChatMessage {
   type: "user" | "system";
   text: string;
   available?: boolean;
+  loading?: boolean;
 }
 
 const ExamActiveView = ({
@@ -29,6 +45,9 @@ const ExamActiveView = ({
   timeLimitSeconds,
   candidateId,
   audioStream,
+  caseTitle,
+  casePrompt,
+  questionsText,
   onForceClose,
   onComplete,
 }: ExamActiveViewProps) => {
@@ -37,13 +56,13 @@ const ExamActiveView = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const completingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showCase, setShowCase] = useState(true);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Start recording + join channel + listen for asset_response
+  // Start recording + join channel
   useEffect(() => {
     start(audioStream);
 
@@ -53,10 +72,11 @@ const ExamActiveView = ({
     channel
       .on("broadcast", { event: "asset_response" }, (payload) => {
         const data = payload.payload as { available: boolean; message: string };
-        setMessages((prev) => [
-          ...prev,
-          { type: "system", text: data.message, available: data.available },
-        ]);
+        setMessages((prev) => {
+          // Remove any loading message
+          const filtered = prev.filter((m) => !m.loading);
+          return [...filtered, { type: "system", text: data.message, available: data.available }];
+        });
       })
       .subscribe();
 
@@ -73,18 +93,60 @@ const ExamActiveView = ({
 
   useAntiCheat(true, handleCheat);
 
-  // Send chat message
-  const handleSendMessage = useCallback((message: string) => {
-    setMessages((prev) => [...prev, { type: "user", text: message }]);
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "chat",
-      payload: { message },
-    });
-  }, []);
+  // Send chat message — call AI edge function
+  const handleSendMessage = useCallback(
+    async (message: string) => {
+      setMessages((prev) => [...prev, { type: "user", text: message }]);
 
-  // Timer complete — upload audio
-  const handleTimerComplete = useCallback(async () => {
+      // Add loading indicator
+      setMessages((prev) => [...prev, { type: "system", text: "Memproses...", loading: true }]);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("exam-chat", {
+          body: { session_id: sessionId, message },
+        });
+
+        if (error) throw error;
+
+        const reply = data?.reply || "Maaf, tidak dapat memproses permintaan Anda.";
+        const assetMatch = data?.asset_match;
+
+        // Remove loading, add AI reply
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => !m.loading);
+          return [
+            ...filtered,
+            {
+              type: "system" as const,
+              text: reply,
+              available: assetMatch?.available ?? false,
+            },
+          ];
+        });
+
+        // If asset matched, broadcast to station display
+        if (assetMatch?.available && channelRef.current) {
+          channelRef.current.send({
+            type: "broadcast",
+            event: "chat",
+            payload: { message },
+          });
+        }
+      } catch (err) {
+        console.error("AI chat error:", err);
+        // Fallback: broadcast to station for keyword matching
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "chat",
+          payload: { message },
+        });
+      }
+    },
+    [sessionId]
+  );
+
+  // Complete exam — shared logic
+  const completeExam = useCallback(async () => {
     if (completingRef.current) return;
     completingRef.current = true;
 
@@ -115,28 +177,81 @@ const ExamActiveView = ({
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Timer */}
-      <div className="flex items-center justify-center py-4 border-b border-border bg-card">
+      {/* Header with timer + end button */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <CountdownTimer
           sessionStartTime={sessionStartTime}
           timeLimitSeconds={timeLimitSeconds}
-          onComplete={handleTimerComplete}
-          className="text-foreground"
+          onComplete={completeExam}
+          className="text-foreground text-3xl"
         />
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm">
+              <LogOut className="h-4 w-4 mr-1" />
+              Selesai
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Akhiri Ujian?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Apakah Anda yakin ingin mengakhiri ujian? Jawaban dan rekaman audio Anda akan disubmit untuk dinilai.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Kembali</AlertDialogCancel>
+              <AlertDialogAction onClick={completeExam}>Ya, Akhiri Ujian</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Recording indicator */}
-      <div className="flex items-center justify-center gap-2 py-2 bg-destructive/10">
-        <Mic className="h-4 w-4 text-destructive animate-pulse" />
+      <div className="flex items-center justify-center gap-2 py-1.5 bg-destructive/10">
+        <Mic className="h-3.5 w-3.5 text-destructive animate-pulse" />
         <span className="text-xs text-destructive font-medium">
-          {isRecording ? "Recording in progress" : "Starting..."}
+          {isRecording ? "Recording" : "Starting..."}
         </span>
       </div>
+
+      {/* Case + Questions (collapsible) */}
+      {(casePrompt || questionsText) && (
+        <div className="border-b border-border bg-muted/30">
+          <button
+            onClick={() => setShowCase(!showCase)}
+            className="w-full px-4 py-2 text-left text-sm font-semibold text-foreground flex items-center justify-between"
+          >
+            <span>{caseTitle || "Kasus & Soal"}</span>
+            <span className="text-xs text-muted-foreground">{showCase ? "Sembunyikan" : "Tampilkan"}</span>
+          </button>
+          {showCase && (
+            <div className="px-4 pb-3 space-y-3 max-h-60 overflow-y-auto">
+              {casePrompt && (
+                <div className="text-sm text-foreground whitespace-pre-wrap">{casePrompt}</div>
+              )}
+              {questionsText && (
+                <>
+                  <div className="border-t border-border pt-2">
+                    <p className="text-xs font-semibold text-primary mb-1">Soal / Pertanyaan:</p>
+                    <div className="text-sm text-foreground whitespace-pre-wrap">{questionsText}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {messages.map((msg, i) =>
-          msg.type === "user" ? (
+          msg.loading ? (
+            <div key={i} className="flex items-center gap-2 max-w-[80%] w-fit text-sm px-4 py-2 rounded-2xl rounded-bl-md bg-muted text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{msg.text}</span>
+            </div>
+          ) : msg.type === "user" ? (
             <div
               key={i}
               className="bg-primary text-primary-foreground px-4 py-2 rounded-2xl rounded-br-md ml-auto max-w-[80%] w-fit text-sm"
@@ -157,13 +272,13 @@ const ExamActiveView = ({
               ) : (
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
               )}
-              <span>{msg.text}</span>
+              <span className="whitespace-pre-wrap">{msg.text}</span>
             </div>
           )
         )}
         {messages.length === 0 && (
           <p className="text-muted-foreground text-center text-sm mt-8">
-            Ketik pesan untuk meminta pemeriksaan dari layar penguji.
+            Ketik pesan untuk bertanya atau meminta pemeriksaan dari penguji.
           </p>
         )}
         <div ref={messagesEndRef} />

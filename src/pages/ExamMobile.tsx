@@ -3,13 +3,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import AudioGatekeeper from "@/components/exam/AudioGatekeeper";
+import ReadingPhaseView from "@/components/exam/ReadingPhaseView";
 import ExamActiveView from "@/components/exam/ExamActiveView";
 import ExamCompleted from "@/pages/ExamCompleted";
 import { toast } from "sonner";
 import { ShieldAlert, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ExamStep = "gatekeeper" | "active" | "force_closed" | "completed" | "duplicate_warning";
+type ExamStep = "gatekeeper" | "reading" | "active" | "force_closed" | "completed" | "duplicate_warning";
 
 const ExamMobile = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -21,6 +22,11 @@ const ExamMobile = () => {
   const [sessionData, setSessionData] = useState<{
     session_start_time: string;
     time_limit_seconds: number;
+  } | null>(null);
+  const [caseInfo, setCaseInfo] = useState<{
+    caseTitle: string;
+    casePrompt: string;
+    questionsText: string;
   } | null>(null);
 
   useEffect(() => {
@@ -64,7 +70,7 @@ const ExamMobile = () => {
         }
       }
 
-      // Claim session and start exam
+      // Claim session
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("exam_sessions")
@@ -80,29 +86,37 @@ const ExamMobile = () => {
         return;
       }
 
-      // Fetch case time limit
-      const { data: session } = await supabase
-        .from("exam_sessions")
-        .select("case_id")
-        .eq("id", sessionId)
-        .single();
-
-      if (!session) return;
-
-      const { data: caseData } = await supabase
-        .from("clinical_cases")
-        .select("time_limit_seconds")
-        .eq("id", session.case_id)
-        .single();
-
-      setSessionData({
-        session_start_time: now,
-        time_limit_seconds: caseData?.time_limit_seconds || 360,
-      });
-
-      setStep("active");
+      // Go to reading phase
+      setStep("reading");
     },
     [sessionId, user]
+  );
+
+  const handleReadingComplete = useCallback(
+    (info: { caseTitle: string; casePrompt: string; questionsText: string; timeLimitSeconds: number }) => {
+      const now = new Date().toISOString();
+
+      // Update session_start_time to NOW (exam timer starts after reading)
+      if (sessionId) {
+        supabase
+          .from("exam_sessions")
+          .update({ session_start_time: now })
+          .eq("id", sessionId)
+          .then();
+      }
+
+      setCaseInfo({
+        caseTitle: info.caseTitle,
+        casePrompt: info.casePrompt,
+        questionsText: info.questionsText,
+      });
+      setSessionData({
+        session_start_time: now,
+        time_limit_seconds: info.timeLimitSeconds,
+      });
+      setStep("active");
+    },
+    [sessionId]
   );
 
   if (loading || !user) {
@@ -132,6 +146,15 @@ const ExamMobile = () => {
     );
   }
 
+  if (step === "reading" && sessionId) {
+    return (
+      <ReadingPhaseView
+        sessionId={sessionId}
+        onReadingComplete={handleReadingComplete}
+      />
+    );
+  }
+
   if (step === "active" && sessionId && audioStream && sessionData) {
     return (
       <ExamActiveView
@@ -140,6 +163,9 @@ const ExamMobile = () => {
         timeLimitSeconds={sessionData.time_limit_seconds}
         candidateId={user.id}
         audioStream={audioStream}
+        caseTitle={caseInfo?.caseTitle}
+        casePrompt={caseInfo?.casePrompt}
+        questionsText={caseInfo?.questionsText}
         onForceClose={() => setStep("force_closed")}
         onComplete={() => setStep("completed")}
       />
