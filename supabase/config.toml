@@ -2,3 +2,6 @@ project_id = "nowebjmwrtkspvdwgevj"
 
 [functions.evaluate-exam]
 verify_jwt = false
+
+[functions.register-candidate]
+verify_jwt = false
