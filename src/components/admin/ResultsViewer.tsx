@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle } from "lucide-react";
+import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, Trash2 } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
 interface ScoreItem {
@@ -73,6 +73,31 @@ const ResultsViewer = () => {
     },
     onError: (e: Error) => {
       toast({ title: "Evaluation Failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ resultId, audioUrl }: { resultId: string; audioUrl: string | null }) => {
+      // Delete audio file from storage if exists
+      if (audioUrl) {
+        const { error: storageError } = await supabase.storage
+          .from("exam-audio")
+          .remove([audioUrl]);
+        if (storageError) console.warn("Failed to delete audio file:", storageError);
+      }
+      // Delete the exam result row
+      const { error } = await supabase
+        .from("exam_results")
+        .delete()
+        .eq("id", resultId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exam_results_admin"] });
+      toast({ title: "Hasil ujian berhasil dihapus" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Gagal menghapus", description: e.message, variant: "destructive" });
     },
   });
 
@@ -157,6 +182,20 @@ const ResultsViewer = () => {
                         >
                           {evaluateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
                           Evaluate
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deleteMutation.isPending}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm("Hapus hasil ujian ini? Kandidat akan bisa mengerjakan ujian lagi.")) {
+                              deleteMutation.mutate({ resultId: r.id, audioUrl: r.audio_file_url });
+                            }
+                          }}
+                        >
+                          {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                          Hapus
                         </Button>
                         <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === r.id ? null : r.id); }}>
                           {expandedId === r.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
