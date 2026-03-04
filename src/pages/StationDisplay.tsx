@@ -8,7 +8,7 @@ import AssetRenderer from "@/components/station/AssetRenderer";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import { nanoid } from "nanoid";
 
-type StationState = "loading" | "waiting" | "active" | "completed";
+type StationState = "loading" | "waiting" | "active" | "completed_screen";
 
 interface SessionData {
   id: string;
@@ -57,8 +57,8 @@ const StationDisplay = () => {
       setSession(data);
       if (data.status === "active" && data.session_start_time) setState("active");
       else if (data.status === "completed" || data.status === "force_closed") {
-        // Auto-regenerate
-        autoRegenerateSession(data.case_id);
+        setState("completed_screen");
+        setTimeout(() => autoRegenerateSession(data.case_id), 5000);
       }
       else setState("waiting");
     };
@@ -92,8 +92,9 @@ const StationDisplay = () => {
       setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
       if (updated.status === "active" && updated.session_start_time) setState("active");
       else if (updated.status === "completed" || updated.status === "force_closed") {
+        setState("completed_screen");
         if (session?.case_id) {
-          autoRegenerateSession(session.case_id);
+          setTimeout(() => autoRegenerateSession(session.case_id), 5000);
         }
       }
     };
@@ -196,6 +197,18 @@ const StationDisplay = () => {
     return <QRDisplay sessionId={session.id} />;
   }
 
+  if (state === "completed_screen") {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center space-y-4">
+          <div className="text-6xl">✅</div>
+          <h1 className="text-4xl font-bold text-foreground">Ujian Selesai</h1>
+          <p className="text-xl text-muted-foreground">Sesi baru akan dimulai dalam beberapa detik...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {session?.session_start_time && caseData && (
@@ -204,15 +217,20 @@ const StationDisplay = () => {
         </div>
       )}
       <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
-        {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
-        {caseMedia.length > 0 && (
-          <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
-            {caseMedia.map((media, idx) => (
-              <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
-            ))}
-          </div>
+        {activeAsset ? (
+          <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
+        ) : (
+          <>
+            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
+            {caseMedia.length > 0 && (
+              <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
+                {caseMedia.map((media, idx) => (
+                  <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
+                ))}
+              </div>
+            )}
+          </>
         )}
-        {activeAsset && <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />}
       </div>
     </div>
   );
