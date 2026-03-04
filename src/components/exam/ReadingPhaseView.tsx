@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { BookOpen } from "lucide-react";
+import AssetRenderer from "@/components/station/AssetRenderer";
 
 interface ReadingPhaseViewProps {
   sessionId: string;
@@ -19,13 +20,15 @@ const ReadingPhaseView = ({ sessionId, onReadingComplete }: ReadingPhaseViewProp
     reading_time_seconds: number;
     questions_text: string;
     time_limit_seconds: number;
+    case_id: string;
   } | null>(null);
+  const [caseMedia, setCaseMedia] = useState<{ asset_url: string; asset_type: string }[]>([]);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [startTime] = useState(Date.now());
 
-  // Fetch case data
+  // Fetch case data + case_media assets
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       const { data: session } = await supabase
         .from("exam_sessions")
         .select("case_id")
@@ -33,17 +36,27 @@ const ReadingPhaseView = ({ sessionId, onReadingComplete }: ReadingPhaseViewProp
         .single();
       if (!session) return;
 
-      const { data } = await supabase
-        .from("clinical_cases")
-        .select("title, initial_prompt, reading_time_seconds, questions_text, time_limit_seconds")
-        .eq("id", session.case_id)
-        .single();
-      if (data) {
-        setCaseData(data as any);
-        setRemaining((data as any).reading_time_seconds || 120);
+      const [caseResult, mediaResult] = await Promise.all([
+        supabase
+          .from("clinical_cases")
+          .select("title, initial_prompt, reading_time_seconds, questions_text, time_limit_seconds")
+          .eq("id", session.case_id)
+          .single(),
+        supabase
+          .from("case_assets")
+          .select("asset_url, asset_type, category")
+          .eq("case_id", session.case_id),
+      ]);
+
+      if (caseResult.data) {
+        setCaseData({ ...(caseResult.data as any), case_id: session.case_id });
+        setRemaining((caseResult.data as any).reading_time_seconds || 120);
       }
+
+      const media = (mediaResult.data || []).filter((a: any) => a.category === "case_media");
+      setCaseMedia(media);
     };
-    fetch();
+    fetchData();
   }, [sessionId]);
 
   // Countdown
@@ -83,7 +96,6 @@ const ReadingPhaseView = ({ sessionId, onReadingComplete }: ReadingPhaseViewProp
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-primary" />
@@ -94,12 +106,19 @@ const ReadingPhaseView = ({ sessionId, onReadingComplete }: ReadingPhaseViewProp
         </div>
       </div>
 
-      {/* Case content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         <h1 className="text-2xl font-bold text-foreground">{caseData.title}</h1>
         <div className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap">
           {caseData.initial_prompt}
         </div>
+
+        {caseMedia.length > 0 && (
+          <div className="space-y-3 pt-2">
+            {caseMedia.map((media, idx) => (
+              <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="p-4 border-t border-border bg-muted/50">

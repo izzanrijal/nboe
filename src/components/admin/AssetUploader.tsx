@@ -4,19 +4,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Upload } from "lucide-react";
+import { Trash2, Upload, Image, Stethoscope, MessageSquare } from "lucide-react";
 
 interface AssetUploaderProps {
   caseId: string;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  case_media: "Media Pendamping Kasus",
+  examination: "Pemeriksaan",
+  additional_info: "Informasi Tambahan",
+};
+
 const AssetUploader = ({ caseId }: AssetUploaderProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [keywords, setKeywords] = useState("");
   const [assetType, setAssetType] = useState("image");
+  const [answerText, setAnswerText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState("case_media");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -33,7 +43,39 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
     },
   });
 
-  const handleUpload = async () => {
+  const resetForm = () => {
+    setFile(null);
+    setKeywords("");
+    setAssetType("image");
+    setAnswerText("");
+  };
+
+  const handleUploadMedia = async (category: string) => {
+    if (category === "additional_info") {
+      if (!keywords.trim() || !answerText.trim()) return;
+      setUploading(true);
+      try {
+        const keywordArr = keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean);
+        const { error } = await supabase.from("case_assets").insert({
+          case_id: caseId,
+          asset_url: "",
+          trigger_keywords: keywordArr,
+          asset_type: "text",
+          category: "additional_info",
+          answer_text: answerText,
+        } as any);
+        if (error) throw error;
+        queryClient.invalidateQueries({ queryKey: ["case_assets", caseId] });
+        toast({ title: "Informasi tambahan disimpan" });
+        resetForm();
+      } catch (e: any) {
+        toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" });
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
     if (!file) return;
     setUploading(true);
     try {
@@ -43,23 +85,22 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("case-assets").getPublicUrl(path);
-
       const keywordArr = keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean);
 
       const { error: insertError } = await supabase.from("case_assets").insert({
         case_id: caseId,
         asset_url: urlData.publicUrl,
-        trigger_keywords: keywordArr,
+        trigger_keywords: category === "case_media" ? [] : keywordArr,
         asset_type: assetType,
-      });
+        category,
+      } as any);
       if (insertError) throw insertError;
 
       queryClient.invalidateQueries({ queryKey: ["case_assets", caseId] });
-      toast({ title: "Asset uploaded" });
-      setFile(null);
-      setKeywords("");
+      toast({ title: "Asset diupload" });
+      resetForm();
     } catch (e: any) {
-      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+      toast({ title: "Upload gagal", description: e.message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -73,19 +114,52 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["case_assets", caseId] }),
   });
 
+  const groupedAssets = {
+    case_media: assets.filter((a: any) => a.category === "case_media"),
+    examination: assets.filter((a: any) => !a.category || a.category === "examination"),
+    additional_info: assets.filter((a: any) => a.category === "additional_info"),
+  };
+
+  const renderAssetList = (items: any[], category: string) => {
+    if (items.length === 0) return <p className="text-sm text-muted-foreground">Belum ada asset.</p>;
+    return items.map((a: any) => (
+      <div key={a.id} className="flex items-center gap-2 rounded-md bg-muted p-2 text-sm">
+        <span className="flex-1 truncate">
+          {category === "case_media"
+            ? a.asset_url?.split("/").pop() || "media"
+            : a.trigger_keywords?.join(", ")}
+        </span>
+        <span className="text-xs text-muted-foreground">{a.asset_type}</span>
+        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(a.id)}>
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    ));
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <TabsList className="grid w-full grid-cols-3">
+        <TabsTrigger value="case_media" className="text-xs">
+          <Image className="h-3 w-3 mr-1" /> Media Kasus
+        </TabsTrigger>
+        <TabsTrigger value="examination" className="text-xs">
+          <Stethoscope className="h-3 w-3 mr-1" /> Pemeriksaan
+        </TabsTrigger>
+        <TabsTrigger value="additional_info" className="text-xs">
+          <MessageSquare className="h-3 w-3 mr-1" /> Info Tambahan
+        </TabsTrigger>
+      </TabsList>
+
+      {/* Case Media */}
+      <TabsContent value="case_media" className="space-y-3">
+        <p className="text-xs text-muted-foreground">Gambar/video yang ditampilkan bersama kasus saat waktu membaca.</p>
         <div className="space-y-2">
           <Label>File</Label>
           <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </div>
         <div className="space-y-2">
-          <Label>Trigger Keywords (comma-separated)</Label>
-          <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. thorax, x-ray, ekg" />
-        </div>
-        <div className="space-y-2">
-          <Label>Asset Type</Label>
+          <Label>Tipe</Label>
           <Select value={assetType} onValueChange={setAssetType}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -94,26 +168,65 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={handleUpload} disabled={!file || uploading} className="w-full">
-          <Upload className="h-4 w-4 mr-2" /> {uploading ? "Uploading..." : "Upload Asset"}
+        <Button onClick={() => handleUploadMedia("case_media")} disabled={!file || uploading} className="w-full">
+          <Upload className="h-4 w-4 mr-2" /> {uploading ? "Mengupload..." : "Upload Media Kasus"}
         </Button>
-      </div>
-
-      {assets.length > 0 && (
         <div className="space-y-2">
-          <Label>Existing Assets</Label>
-          {assets.map((a: any) => (
-            <div key={a.id} className="flex items-center gap-2 rounded-md bg-muted p-2 text-sm">
-              <span className="flex-1 truncate">{a.trigger_keywords?.join(", ")}</span>
-              <span className="text-xs text-muted-foreground">{a.asset_type}</span>
-              <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(a.id)}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+          <Label>Media Kasus Tersimpan</Label>
+          {renderAssetList(groupedAssets.case_media, "case_media")}
         </div>
-      )}
-    </div>
+      </TabsContent>
+
+      {/* Examination */}
+      <TabsContent value="examination" className="space-y-3">
+        <p className="text-xs text-muted-foreground">Media yang ditampilkan saat peserta meminta pemeriksaan tertentu via keyword.</p>
+        <div className="space-y-2">
+          <Label>File</Label>
+          <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Trigger Keywords (pisah koma)</Label>
+          <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. thorax, x-ray, ekg" />
+        </div>
+        <div className="space-y-2">
+          <Label>Tipe</Label>
+          <Select value={assetType} onValueChange={setAssetType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="image">Image</SelectItem>
+              <SelectItem value="video">Video</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => handleUploadMedia("examination")} disabled={!file || !keywords.trim() || uploading} className="w-full">
+          <Upload className="h-4 w-4 mr-2" /> {uploading ? "Mengupload..." : "Upload Pemeriksaan"}
+        </Button>
+        <div className="space-y-2">
+          <Label>Pemeriksaan Tersimpan</Label>
+          {renderAssetList(groupedAssets.examination, "examination")}
+        </div>
+      </TabsContent>
+
+      {/* Additional Info */}
+      <TabsContent value="additional_info" className="space-y-3">
+        <p className="text-xs text-muted-foreground">Informasi teks (anamnesis, lab, dll) yang bisa ditanyakan peserta. Tidak perlu upload file.</p>
+        <div className="space-y-2">
+          <Label>Trigger Keywords (pisah koma)</Label>
+          <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. riwayat keluarga, alergi" />
+        </div>
+        <div className="space-y-2">
+          <Label>Jawaban</Label>
+          <Textarea value={answerText} onChange={(e) => setAnswerText(e.target.value)} placeholder="Jawaban yang akan diberikan saat peserta bertanya..." rows={4} />
+        </div>
+        <Button onClick={() => handleUploadMedia("additional_info")} disabled={!keywords.trim() || !answerText.trim() || uploading} className="w-full">
+          <Upload className="h-4 w-4 mr-2" /> {uploading ? "Menyimpan..." : "Simpan Info Tambahan"}
+        </Button>
+        <div className="space-y-2">
+          <Label>Info Tambahan Tersimpan</Label>
+          {renderAssetList(groupedAssets.additional_info, "additional_info")}
+        </div>
+      </TabsContent>
+    </Tabs>
   );
 };
 

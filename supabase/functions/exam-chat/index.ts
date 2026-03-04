@@ -27,7 +27,6 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Fetch session → case data
     const { data: session } = await supabase
       .from("exam_sessions")
       .select("case_id")
@@ -41,7 +40,6 @@ serve(async (req) => {
       });
     }
 
-    // Fetch case + assets
     const [caseResult, assetsResult] = await Promise.all([
       supabase
         .from("clinical_cases")
@@ -50,7 +48,7 @@ serve(async (req) => {
         .single(),
       supabase
         .from("case_assets")
-        .select("asset_type, trigger_keywords")
+        .select("asset_type, trigger_keywords, category, answer_text")
         .eq("case_id", session.case_id),
     ]);
 
@@ -64,9 +62,16 @@ serve(async (req) => {
       });
     }
 
-    // Build available examinations list
-    const availableExams = assets
+    // Separate assets by category
+    const examAssets = assets.filter((a: any) => !a.category || a.category === "examination");
+    const additionalInfoAssets = assets.filter((a: any) => a.category === "additional_info");
+
+    const availableExams = examAssets
       .map((a: any) => `- ${a.trigger_keywords.join(", ")} (${a.asset_type})`)
+      .join("\n");
+
+    const additionalInfo = additionalInfoAssets
+      .map((a: any) => `- Keywords: ${a.trigger_keywords.join(", ")}\n  Jawaban: ${a.answer_text}`)
       .join("\n");
 
     const systemPrompt = `Kamu adalah penguji klinis dalam ujian OSCE/OSPE. Jawab pertanyaan kandidat berdasarkan HANYA data kasus yang diberikan.
@@ -76,20 +81,24 @@ ${caseData.initial_prompt}
 
 ${caseData.questions_text ? `SOAL:\n${caseData.questions_text}` : ""}
 
-PEMERIKSAAN YANG TERSEDIA:
+PEMERIKSAAN YANG TERSEDIA (memiliki media untuk ditampilkan):
 ${availableExams || "Tidak ada pemeriksaan yang tersedia."}
 
-ATURAN:
-1. Jika kandidat meminta pemeriksaan fisik/penunjang yang ADA di daftar, berikan hasil/jawaban singkat dan faktual.
-2. Jika pemeriksaan TIDAK ADA di daftar, katakan "Pemeriksaan tersebut tidak tersedia dalam skenario ini."
-3. Jika kandidat bertanya tentang anamnesis lanjutan, berikan jawaban singkat sesuai konteks kasus.
-4. Jangan memberikan diagnosis langsung atau jawaban soal. Kamu hanya menyediakan data tambahan.
-5. Jawab dalam bahasa yang sama dengan kandidat. Singkat dan to the point.`;
+INFORMASI TAMBAHAN YANG TERSEDIA:
+${additionalInfo || "Tidak ada informasi tambahan."}
 
-    // Check keyword match locally
+ATURAN:
+1. Jika kandidat meminta pemeriksaan fisik/penunjang yang ADA di daftar PEMERIKSAAN, berikan hasil/jawaban singkat dan faktual.
+2. Jika kandidat bertanya tentang sesuatu yang ADA di INFORMASI TAMBAHAN, gunakan jawaban yang sudah disediakan.
+3. Jika pemeriksaan/informasi TIDAK ADA di kedua daftar, katakan "Pemeriksaan/informasi tersebut tidak tersedia dalam skenario ini."
+4. Jika kandidat bertanya tentang anamnesis lanjutan, berikan jawaban singkat sesuai konteks kasus atau informasi tambahan.
+5. Jangan memberikan diagnosis langsung atau jawaban soal. Kamu hanya menyediakan data tambahan.
+6. Jawab dalam bahasa yang sama dengan kandidat. Singkat dan to the point.`;
+
+    // Check keyword match — only for examination assets (which have media)
     let assetMatch = null;
     const lowerMsg = message.toLowerCase();
-    for (const asset of assets) {
+    for (const asset of examAssets) {
       const keywords = (asset as any).trigger_keywords || [];
       for (const kw of keywords) {
         if (lowerMsg.includes(kw.toLowerCase())) {
@@ -101,7 +110,6 @@ ATURAN:
     }
 
     if (!lovableApiKey) {
-      // Fallback without AI: just do keyword matching
       const reply = assetMatch
         ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
         : "Pemeriksaan tersebut tidak tersedia dalam skenario ini.";
@@ -111,7 +119,6 @@ ATURAN:
       );
     }
 
-    // Call AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
