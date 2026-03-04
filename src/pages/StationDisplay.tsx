@@ -41,7 +41,6 @@ const StationDisplay = () => {
   // Fetch session by token
   useEffect(() => {
     if (!token) return;
-
     const fetchSession = async () => {
       const { data, error } = await supabase
         .from("exam_sessions")
@@ -51,84 +50,45 @@ const StationDisplay = () => {
         .limit(1)
         .maybeSingle();
 
-      if (error || !data) {
-        setState("loading");
-        return;
-      }
-
+      if (error || !data) { setState("loading"); return; }
       setSession(data);
-      if (data.status === "active" && data.session_start_time) {
-        setState("active");
-      } else if (data.status === "completed" || data.status === "force_closed") {
-        setState("completed");
-      } else {
-        setState("waiting");
-      }
+      if (data.status === "active" && data.session_start_time) setState("active");
+      else if (data.status === "completed" || data.status === "force_closed") setState("completed");
+      else setState("waiting");
     };
-
     fetchSession();
   }, [token]);
 
-  // Subscribe to session changes via postgres_changes
+  // Subscribe to session changes
   useEffect(() => {
     if (!session?.id) return;
-
     const channel = supabase
       .channel(`session-status-${session.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "exam_sessions",
-          filter: `id=eq.${session.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as any;
-          setSession((prev) =>
-            prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev
-          );
-          if (updated.status === "active" && updated.session_start_time) {
-            setState("active");
-          } else if (updated.status === "completed" || updated.status === "force_closed") {
-            setState("completed");
-          }
-        }
-      )
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "exam_sessions", filter: `id=eq.${session.id}` }, (payload) => {
+        const updated = payload.new as any;
+        setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
+        if (updated.status === "active" && updated.session_start_time) setState("active");
+        else if (updated.status === "completed" || updated.status === "force_closed") setState("completed");
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [session?.id]);
 
   // Fetch case data and assets when active
   useEffect(() => {
     if (state !== "active" || !session?.case_id) return;
-
     const fetchCase = async () => {
-      const { data } = await supabase
-        .from("clinical_cases")
-        .select("title, initial_prompt, time_limit_seconds")
-        .eq("id", session.case_id)
-        .single();
-
+      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds").eq("id", session.case_id).single();
       if (data) setCaseData(data);
-
-      const { data: assetData } = await supabase
-        .from("case_assets")
-        .select("id, asset_url, asset_type, trigger_keywords")
-        .eq("case_id", session.case_id);
-
+      const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords").eq("case_id", session.case_id);
       if (assetData) setAssets(assetData);
     };
-
     fetchCase();
   }, [state, session?.case_id]);
 
-  // Subscribe to broadcast channel for chat messages (keyword matching)
+  // Subscribe to broadcast channel — bidirectional asset response
   useEffect(() => {
-    if (state !== "active" || !session?.id || assets.length === 0) return;
+    if (state !== "active" || !session?.id) return;
 
     const channel = supabase.channel(`session:${session.id}`);
     channelRef.current = channel;
@@ -138,12 +98,30 @@ const StationDisplay = () => {
         const message = payload.payload?.message as string || "";
         if (!message) return;
 
-        // Use keywordMatcher utility for normalized matching
+        // Find matching asset
+        let matched: AssetData | null = null;
         for (const asset of assets) {
           if (matchesKeywords(message, asset.trigger_keywords)) {
-            setActiveAsset(asset);
+            matched = asset;
             break;
           }
+        }
+
+        if (matched) {
+          setActiveAsset(matched);
+          // Broadcast asset_response: available
+          channel.send({
+            type: "broadcast",
+            event: "asset_response",
+            payload: { available: true, assetType: matched.asset_type, message: `Menampilkan ${matched.asset_type}: ${matched.trigger_keywords[0] || "asset"}` },
+          });
+        } else {
+          // Broadcast asset_response: not available
+          channel.send({
+            type: "broadcast",
+            event: "asset_response",
+            payload: { available: false, message: "Pemeriksaan tersebut tidak tersedia" },
+          });
         }
       })
       .subscribe();
@@ -154,13 +132,9 @@ const StationDisplay = () => {
     };
   }, [state, session?.id, assets]);
 
-  // Handle timer complete
   const handleTimerComplete = useCallback(async () => {
     if (!session?.id) return;
-    await supabase
-      .from("exam_sessions")
-      .update({ status: "completed" })
-      .eq("id", session.id);
+    await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", session.id);
     setState("completed");
   }, [session?.id]);
 
@@ -182,35 +156,21 @@ const StationDisplay = () => {
         <div className="text-6xl">✅</div>
         <h1 className="text-4xl font-bold text-foreground">Session Completed</h1>
         <p className="text-muted-foreground text-lg">The examination has ended.</p>
-        <p className="text-muted-foreground text-sm">
-          Deploy a new session from the Admin Dashboard to begin the next exam.
-        </p>
+        <p className="text-muted-foreground text-sm">Deploy a new session from the Admin Dashboard to begin the next exam.</p>
       </div>
     );
   }
 
-  // Active state
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Timer header */}
       {session?.session_start_time && caseData && (
         <div className="flex items-center justify-center py-6 border-b border-border">
-          <CountdownTimer
-            sessionStartTime={session.session_start_time}
-            timeLimitSeconds={caseData.time_limit_seconds}
-            onComplete={handleTimerComplete}
-          />
+          <CountdownTimer sessionStartTime={session.session_start_time} timeLimitSeconds={caseData.time_limit_seconds} onComplete={handleTimerComplete} />
         </div>
       )}
-
-      {/* Content area */}
       <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
-        {caseData && (
-          <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />
-        )}
-        {activeAsset && (
-          <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
-        )}
+        {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
+        {activeAsset && <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />}
       </div>
     </div>
   );

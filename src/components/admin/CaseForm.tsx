@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import RubricBuilder from "./RubricBuilder";
+import RubricBuilder, { type RubricData } from "./RubricBuilder";
+import AssetUploader from "./AssetUploader";
 
 interface CaseFormProps {
   existingCase?: {
@@ -21,13 +23,28 @@ interface CaseFormProps {
   onClose: () => void;
 }
 
+function parseRubricData(raw: any): RubricData {
+  // New format: { enabled, items }
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && "enabled" in raw) {
+    return raw as RubricData;
+  }
+  // Legacy format: string[]
+  if (Array.isArray(raw) && raw.length > 0) {
+    return {
+      enabled: true,
+      items: raw.map((text: string) => ({ text, points: 10, isCritical: false })),
+    };
+  }
+  return { enabled: false, items: [] };
+}
+
 const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
   const [title, setTitle] = useState(existingCase?.title ?? "");
   const [examMode, setExamMode] = useState(existingCase?.exam_mode ?? "oral_board");
   const [initialPrompt, setInitialPrompt] = useState(existingCase?.initial_prompt ?? "");
   const [timeLimitSeconds, setTimeLimitSeconds] = useState(existingCase?.time_limit_seconds ?? 360);
-  const [rubricItems, setRubricItems] = useState<string[]>(
-    Array.isArray(existingCase?.checklist_rubric) ? existingCase.checklist_rubric : []
+  const [rubricData, setRubricData] = useState<RubricData>(
+    parseRubricData(existingCase?.checklist_rubric)
   );
 
   const queryClient = useQueryClient();
@@ -40,7 +57,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         exam_mode: examMode,
         initial_prompt: initialPrompt,
         time_limit_seconds: timeLimitSeconds,
-        checklist_rubric: rubricItems,
+        checklist_rubric: rubricData as any,
       };
 
       if (existingCase) {
@@ -90,7 +107,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
           value={initialPrompt}
           onChange={(e) => setInitialPrompt(e.target.value)}
           rows={5}
-          placeholder="The clinical scenario text shown on the display screen..."
+          placeholder="Kasus klinis singkat dan pertanyaan yang harus dijawab kandidat..."
         />
       </div>
 
@@ -105,7 +122,21 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         />
       </div>
 
-      <RubricBuilder items={rubricItems} onChange={setRubricItems} />
+      <RubricBuilder data={rubricData} onChange={setRubricData} />
+
+      {/* Asset uploader — only in edit mode when case has an ID */}
+      {existingCase?.id && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">Media Assets</Label>
+            <p className="text-xs text-muted-foreground">
+              Upload gambar/video yang akan tampil saat kandidat meminta pemeriksaan tertentu.
+            </p>
+            <AssetUploader caseId={existingCase.id} />
+          </div>
+        </>
+      )}
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
