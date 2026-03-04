@@ -56,6 +56,8 @@ const ExamMobile = () => {
 
         if (sameCaseSessions && sameCaseSessions.length > 0) {
           const sessionIds = sameCaseSessions.map((s) => s.id);
+
+          // Check 1: existing exam_results
           const { data: existingResults } = await supabase
             .from("exam_results")
             .select("id")
@@ -64,6 +66,20 @@ const ExamMobile = () => {
             .limit(1);
 
           if (existingResults && existingResults.length > 0) {
+            setStep("duplicate_warning");
+            return;
+          }
+
+          // Check 2: candidate was assigned to a completed/force_closed session (fallback)
+          const { data: completedSessions } = await supabase
+            .from("exam_sessions")
+            .select("id")
+            .eq("current_candidate_id", user.id)
+            .eq("case_id", currentSession.case_id)
+            .in("status", ["completed", "force_closed"])
+            .limit(1);
+
+          if (completedSessions && completedSessions.length > 0) {
             setStep("duplicate_warning");
             return;
           }
