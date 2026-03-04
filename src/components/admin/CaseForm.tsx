@@ -19,16 +19,16 @@ interface CaseFormProps {
     initial_prompt: string;
     checklist_rubric: any;
     time_limit_seconds: number;
+    reading_time_seconds?: number;
+    questions_text?: string;
   } | null;
   onClose: () => void;
 }
 
 function parseRubricData(raw: any): RubricData {
-  // New format: { enabled, items }
   if (raw && typeof raw === "object" && !Array.isArray(raw) && "enabled" in raw) {
     return raw as RubricData;
   }
-  // Legacy format: string[]
   if (Array.isArray(raw) && raw.length > 0) {
     return {
       enabled: true,
@@ -43,6 +43,8 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
   const [examMode, setExamMode] = useState(existingCase?.exam_mode ?? "oral_board");
   const [initialPrompt, setInitialPrompt] = useState(existingCase?.initial_prompt ?? "");
   const [timeLimitSeconds, setTimeLimitSeconds] = useState(existingCase?.time_limit_seconds ?? 360);
+  const [readingTimeSeconds, setReadingTimeSeconds] = useState(existingCase?.reading_time_seconds ?? 120);
+  const [questionsText, setQuestionsText] = useState(existingCase?.questions_text ?? "");
   const [rubricData, setRubricData] = useState<RubricData>(
     parseRubricData(existingCase?.checklist_rubric)
   );
@@ -57,6 +59,8 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         exam_mode: examMode,
         initial_prompt: initialPrompt,
         time_limit_seconds: timeLimitSeconds,
+        reading_time_seconds: readingTimeSeconds,
+        questions_text: questionsText,
         checklist_rubric: rubricData as any,
       };
 
@@ -101,30 +105,52 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="prompt">Initial Prompt</Label>
+        <Label htmlFor="prompt">Kasus Klinis (Initial Prompt)</Label>
         <Textarea
           id="prompt"
           value={initialPrompt}
           onChange={(e) => setInitialPrompt(e.target.value)}
           rows={5}
-          placeholder="Kasus klinis singkat dan pertanyaan yang harus dijawab kandidat..."
+          placeholder="Deskripsi kasus klinis yang akan ditampilkan saat fase membaca..."
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="time">Time Limit (seconds)</Label>
-        <Input
-          id="time"
-          type="number"
-          min={60}
-          value={timeLimitSeconds}
-          onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
+        <Label htmlFor="questions">Soal / Pertanyaan</Label>
+        <Textarea
+          id="questions"
+          value={questionsText}
+          onChange={(e) => setQuestionsText(e.target.value)}
+          rows={4}
+          placeholder="Pertanyaan yang ditampilkan setelah waktu baca selesai, bersama kasus di atas..."
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="readingTime">Waktu Baca (detik)</Label>
+          <Input
+            id="readingTime"
+            type="number"
+            min={0}
+            value={readingTimeSeconds}
+            onChange={(e) => setReadingTimeSeconds(Number(e.target.value))}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="time">Waktu Ujian (detik)</Label>
+          <Input
+            id="time"
+            type="number"
+            min={60}
+            value={timeLimitSeconds}
+            onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
+          />
+        </div>
       </div>
 
       <RubricBuilder data={rubricData} onChange={setRubricData} />
 
-      {/* Asset uploader — only in edit mode when case has an ID */}
       {existingCase?.id && (
         <>
           <Separator />

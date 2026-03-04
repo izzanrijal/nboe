@@ -57,6 +57,8 @@ export type Database = {
           exam_mode: string
           id: string
           initial_prompt: string
+          questions_text: string
+          reading_time_seconds: number
           time_limit_seconds: number
           title: string
         }
@@ -67,6 +69,8 @@ export type Database = {
           exam_mode?: string
           id?: string
           initial_prompt?: string
+          questions_text?: string
+          reading_time_seconds?: number
           time_limit_seconds?: number
           title: string
         }
@@ -77,6 +81,8 @@ export type Database = {
           exam_mode?: string
           id?: string
           initial_prompt?: string
+          questions_text?: string
+          reading_time_seconds?: number
           time_limit_seconds?: number
           title?: string
         }

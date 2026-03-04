@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.register-candidate]
 verify_jwt = false
+
+[functions.exam-chat]
+verify_jwt = false
