@@ -6,6 +6,7 @@ import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
 import CountdownTimer from "@/components/station/CountdownTimer";
+import { nanoid } from "nanoid";
 
 type StationState = "loading" | "waiting" | "active" | "completed";
 
@@ -37,15 +38,16 @@ const StationDisplay = () => {
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [activeAsset, setActiveAsset] = useState<AssetData | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const [currentToken, setCurrentToken] = useState(token);
 
   // Fetch session by token
   useEffect(() => {
-    if (!token) return;
+    if (!currentToken) return;
     const fetchSession = async () => {
       const { data, error } = await supabase
         .from("exam_sessions")
         .select("id, case_id, status, session_start_time")
-        .eq("station_token", token)
+        .eq("station_token", currentToken)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -53,11 +55,33 @@ const StationDisplay = () => {
       if (error || !data) { setState("loading"); return; }
       setSession(data);
       if (data.status === "active" && data.session_start_time) setState("active");
-      else if (data.status === "completed" || data.status === "force_closed") setState("completed");
+      else if (data.status === "completed" || data.status === "force_closed") {
+        // Auto-regenerate
+        autoRegenerateSession(data.case_id);
+      }
       else setState("waiting");
     };
     fetchSession();
-  }, [token]);
+  }, [currentToken]);
+
+  const autoRegenerateSession = useCallback(async (caseId: string) => {
+    const newToken = nanoid(10);
+    const { data, error } = await supabase
+      .from("exam_sessions")
+      .insert({ case_id: caseId, station_token: newToken, status: "waiting" })
+      .select("id, case_id, status, session_start_time")
+      .single();
+
+    if (data && !error) {
+      setSession(data);
+      setCurrentToken(newToken);
+      setActiveAsset(null);
+      setCaseData(null);
+      setState("waiting");
+      // Update URL without reload
+      window.history.replaceState(null, "", `/station/${newToken}`);
+    }
+  }, []);
 
   // Subscribe to session changes
   useEffect(() => {
@@ -68,11 +92,16 @@ const StationDisplay = () => {
         const updated = payload.new as any;
         setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
         if (updated.status === "active" && updated.session_start_time) setState("active");
-        else if (updated.status === "completed" || updated.status === "force_closed") setState("completed");
+        else if (updated.status === "completed" || updated.status === "force_closed") {
+          // Auto-regenerate on completion
+          if (session?.case_id) {
+            autoRegenerateSession(session.case_id);
+          }
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [session?.id]);
+  }, [session?.id, session?.case_id, autoRegenerateSession]);
 
   // Fetch case data and assets when active
   useEffect(() => {
@@ -98,7 +127,6 @@ const StationDisplay = () => {
         const message = payload.payload?.message as string || "";
         if (!message) return;
 
-        // Find matching asset
         let matched: AssetData | null = null;
         for (const asset of assets) {
           if (matchesKeywords(message, asset.trigger_keywords)) {
@@ -109,14 +137,12 @@ const StationDisplay = () => {
 
         if (matched) {
           setActiveAsset(matched);
-          // Broadcast asset_response: available
           channel.send({
             type: "broadcast",
             event: "asset_response",
             payload: { available: true, assetType: matched.asset_type, message: `Menampilkan ${matched.asset_type}: ${matched.trigger_keywords[0] || "asset"}` },
           });
         } else {
-          // Broadcast asset_response: not available
           channel.send({
             type: "broadcast",
             event: "asset_response",
@@ -135,7 +161,6 @@ const StationDisplay = () => {
   const handleTimerComplete = useCallback(async () => {
     if (!session?.id) return;
     await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", session.id);
-    setState("completed");
   }, [session?.id]);
 
   if (state === "loading") {
@@ -148,17 +173,6 @@ const StationDisplay = () => {
 
   if (state === "waiting" && session) {
     return <QRDisplay sessionId={session.id} />;
-  }
-
-  if (state === "completed") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-6">
-        <div className="text-6xl">✅</div>
-        <h1 className="text-4xl font-bold text-foreground">Session Completed</h1>
-        <p className="text-muted-foreground text-lg">The examination has ended.</p>
-        <p className="text-muted-foreground text-sm">Deploy a new session from the Admin Dashboard to begin the next exam.</p>
-      </div>
-    );
   }
 
   return (
