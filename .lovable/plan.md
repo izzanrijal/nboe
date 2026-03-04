@@ -1,48 +1,31 @@
 
 
-# Bug Fix: Candidate Can Retake Completed Exam
+# Fix: PC Display Issues & AI Hallucination
 
-## Root Cause
+## 3 Issues Identified
 
-The duplicate prevention check in `ExamMobile.tsx` relies on finding an `exam_results` row for the candidate. However, in `ExamActiveView.tsx` (line 155), the `exam_results` insert is **skipped** when the audio recording blob is null or empty:
+### 1. PC Station doesn't stop when candidate finishes
+The polling fallback (3s) detects `status === "completed"` and calls `autoRegenerateSession` — which creates a **new** session and shows QR. This technically works, but the transition happens so fast the admin might not notice the exam ended. The real issue is that the station **auto-regenerates immediately**, making it seem like the exam never stopped.
 
-```typescript
-if (blob && blob.size > 0) {
-  // upload audio...
-  // insert exam_result... ← ONLY runs inside this block
-}
-await supabase.from("exam_sessions").update({ status: "completed" })...
-```
+**Fix**: Add a brief "Ujian Selesai" screen (5 seconds) before auto-regenerating. This gives clear visual feedback that the exam ended.
 
-If the recording fails (browser issue, stream ended, etc.), no `exam_result` row is created. The session is marked "completed", the station auto-regenerates a new QR, and the candidate can scan again — the duplicate check finds no results and allows re-entry.
+### 2. Case media covers examination assets (scroll needed)
+`StationDisplay` renders case media AND active examination assets in a vertical stack (lines 206-216). When both exist, the page overflows and requires scrolling, causing the admin to miss the examination asset.
 
-Additionally, the station's own `handleTimerComplete` can mark the session as "completed" independently, which also results in no `exam_result` being created.
+**Fix**: When an `activeAsset` is present, **hide case media and case prompt** — show only the active examination asset in full screen. When no examination is active, show case media as before.
 
-## Solution
+### 3. AI hallucination on thorax photo
+The system prompt rule 1 says: "berikan hasil/jawaban singkat dan faktual" for examination assets. The AI interprets this as an invitation to **generate** clinical findings for the image, even though no interpretation text was provided. The AI has no access to the actual image — it's hallucinating.
 
-### 1. Always insert `exam_result` in `ExamActiveView.tsx`
-Move the `exam_results` insert **outside** the blob size check. The audio URL can be null if recording failed, but the result row must always exist.
-
-```typescript
-// Upload audio if available
-let fileName: string | null = null;
-const blob = await stop();
-if (blob && blob.size > 0) {
-  fileName = `${sessionId}_${candidateId}_${Date.now()}.webm`;
-  await supabase.storage.from("exam-audio").upload(fileName, blob, ...);
-}
-// Always insert result
-await supabase.from("exam_results").insert({
-  session_id: sessionId,
-  candidate_id: candidateId,
-  audio_file_url: fileName,
-});
-```
-
-### 2. Strengthen duplicate check in `ExamMobile.tsx`
-Also check if the candidate is already `current_candidate_id` on any completed/force_closed session with the same `case_id` — as a fallback in case the result insert also failed.
+**Fix**: Change the system prompt to explicitly instruct the AI that for examination assets (which have media), it should ONLY say the media is being displayed on screen and NOT generate any interpretation or findings. Interpretations should only come from `answer_text` in additional_info assets.
 
 ## Files to Modify
-- `src/components/exam/ExamActiveView.tsx` — move result insert outside blob guard
-- `src/pages/ExamMobile.tsx` — add fallback duplicate check against session status
+
+- **`src/pages/StationDisplay.tsx`**
+  - Add `"completed_screen"` state that shows "Ujian Selesai" for 5s before auto-regenerating
+  - When `activeAsset` exists, hide `CasePromptDisplay` and `caseMedia`, show only the active asset full-screen
+
+- **`supabase/functions/exam-chat/index.ts`**
+  - Update system prompt rule 1: for examination assets, tell AI to ONLY confirm the media is being displayed, do NOT generate interpretations
+  - Add explicit rule: "Kamu TIDAK BISA melihat gambar/video. Jangan membuat interpretasi atau deskripsi media."
 
