@@ -1,58 +1,42 @@
 
 
-# Enhanced Rubric System, Weighted Scoring, and Asset Integration
+# Bug Fixes: Admin Redirect, Station Auto-Reset, Candidate Warnings
 
-## What to Build
+## Bugs Identified
 
-### 1. Enhanced Rubric Builder (`RubricBuilder.tsx`)
-- Add toggle switch "Penilaian Berdasarkan Daftar Tilik" (rubric-based grading on/off)
-- Each rubric item becomes an object: `{ text: string, points: number, isCritical: boolean }`
-- Per item: text input, points input (numeric), "Critical" checkbox (with warning icon)
-- Show total points at bottom
-- When toggle is OFF, rubric section collapses/hides
+### Bug 1: Admin always redirected to /exam
+**Root cause**: Race condition in `AuthContext.tsx`. When `onAuthStateChange` fires `SIGNED_IN`, it calls `setLoading(false)` immediately, but `checkAdminRole` is deferred with `setTimeout(..., 0)`. So `ProtectedRoute` renders with `isAdmin = false` → redirects to `/` → `Index.tsx` sees non-admin user → `/exam`.
 
-### 2. Update `checklist_rubric` JSONB Structure
-No DB migration needed — JSONB is flexible. New structure stored in `checklist_rubric`:
-```json
-{
-  "enabled": true,
-  "items": [
-    { "text": "Anamnesis lengkap", "points": 10, "isCritical": false },
-    { "text": "Informed consent", "points": 15, "isCritical": true }
-  ]
-}
-```
+**Fix**: Make `checkAdminRole` awaited before setting `loading = false`. Remove the `setTimeout` wrapper. In `onAuthStateChange`, call `await checkAdminRole()` before `setLoading(false)`. Same in `getSession`.
 
-### 3. Update CaseForm (`CaseForm.tsx`)
-- Pass structured rubric data (enabled + items) to/from RubricBuilder
-- Integrate `AssetUploader` directly inside the form (below rubric section) for cases that already have an ID (edit mode)
-- For new cases: show asset upload after first save
+### Bug 2: Station should auto-regenerate session after completion
+**Current**: Shows static "Deploy a new session from Admin Dashboard" message.
+**Fix**: When session completes, StationDisplay auto-creates a new `exam_sessions` row with same `case_id` and a new `nanoid` token, then displays a fresh QR code. No admin intervention needed.
 
-### 4. Update Scoring in ResultsViewer (`ResultsViewer.tsx`)
-- Parse new rubric structure with points
-- Score = sum of passed items' points / total possible points (percentage)
-- Show critical items with red warning — if any critical item is FAIL, show "TIDAK LULUS" badge
-- Display individual points per item in score report
+### Bug 3: Duplicate candidate warning missing
+**Current**: If same candidate scans QR for a session they already completed, no warning.
+**Fix**: In `ExamMobile.handleAudioReady`, before claiming session, query `exam_results` for existing result with same `candidate_id` + `session_id` (by case). If found, show warning screen instead of proceeding.
 
-### 5. Update Edge Function (`evaluate-exam/index.ts`)
-- Send rubric items with points and critical flags to AI
-- AI returns `{ item, passed, comment, points, isCritical }` per item
-- Calculate final score in the function and include in response
-
-### 6. Candidate Reactive Chat — "Not Available" Response
-- In `StationDisplay.tsx`: when a chat message doesn't match any asset keyword, broadcast back a `{ event: "asset_response", payload: { available: false } }` message
-- When it matches, broadcast `{ available: true, asset }` 
-- In `ExamActiveView.tsx`: listen for `asset_response` broadcast and show system message "Pemeriksaan tersebut tidak tersedia" or show confirmation
+### Bug 4: Login page hardcodes /admin redirect
+`Login.tsx` line 25: `navigate("/admin")` — should navigate to `/` and let Index handle routing based on role.
 
 ## Files to Change
 
-**Modified (5):**
-- `src/components/admin/RubricBuilder.tsx` — complete rewrite with toggle, points, critical checkbox
-- `src/components/admin/CaseForm.tsx` — structured rubric state, integrate AssetUploader
-- `src/components/admin/ResultsViewer.tsx` — weighted scoring display, critical item logic
-- `src/pages/StationDisplay.tsx` — bidirectional broadcast for asset availability
-- `supabase/functions/evaluate-exam/index.ts` — handle weighted rubric in AI prompt
+### 1. `src/contexts/AuthContext.tsx`
+- Remove `setTimeout` around `checkAdminRole`
+- Await `checkAdminRole` before setting `loading = false` in both `onAuthStateChange` and `getSession`
+- Key change: make the auth state change callback properly sequential
 
-**Modified (1):**
-- `src/components/exam/ExamActiveView.tsx` — listen for asset_response, show system messages
+### 2. `src/pages/Login.tsx`
+- Change `navigate("/admin")` → `navigate("/", { replace: true })` so Index.tsx handles role-based redirect
+
+### 3. `src/pages/StationDisplay.tsx`
+- In `completed` state: auto-create new session with same `case_id`, new `nanoid` token
+- Reset state to `waiting` with the new session data
+- Import `nanoid`
+
+### 4. `src/pages/ExamMobile.tsx`
+- In `handleAudioReady` (before claiming session): check if candidate already has an `exam_results` entry for any session with the same `case_id`
+- If duplicate found, show warning screen with message like "Anda sudah mengerjakan ujian ini sebelumnya"
+- Add new step `"duplicate_warning"` to ExamStep type
 
