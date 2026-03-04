@@ -241,6 +241,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      regenerate_station_session: {
+        Args: { _case_id: string; _new_token: string }
+        Returns: {
+          case_id: string
+          id: string
+          session_start_time: string
+          status: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "candidate"
