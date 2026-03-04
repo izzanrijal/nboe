@@ -1,42 +1,33 @@
 
 
-# Bug Fixes: Admin Redirect, Station Auto-Reset, Candidate Warnings
+# Fix: Blank Screen & Auth Session
 
-## Bugs Identified
+## Root Cause
 
-### Bug 1: Admin always redirected to /exam
-**Root cause**: Race condition in `AuthContext.tsx`. When `onAuthStateChange` fires `SIGNED_IN`, it calls `setLoading(false)` immediately, but `checkAdminRole` is deferred with `setTimeout(..., 0)`. So `ProtectedRoute` renders with `isAdmin = false` → redirects to `/` → `Index.tsx` sees non-admin user → `/exam`.
+Two issues causing blank screen:
 
-**Fix**: Make `checkAdminRole` awaited before setting `loading = false`. Remove the `setTimeout` wrapper. In `onAuthStateChange`, call `await checkAdminRole()` before `setLoading(false)`. Same in `getSession`.
+1. **Race condition**: `onAuthStateChange` fires with `INITIAL_SESSION` event, but `await checkAdminRole()` inside it causes a deadlock — Supabase docs warn against awaiting async ops in `onAuthStateChange`. Meanwhile `getSession()` also runs and may call `signOut()` (one-time session logic), causing conflicting state updates.
 
-### Bug 2: Station should auto-regenerate session after completion
-**Current**: Shows static "Deploy a new session from Admin Dashboard" message.
-**Fix**: When session completes, StationDisplay auto-creates a new `exam_sessions` row with same `case_id` and a new `nanoid` token, then displays a fresh QR code. No admin intervention needed.
+2. **One-time session enforcement** (lines 70-75): If user has a valid Supabase session in localStorage but no `sessionStorage` flag (e.g. closed tab and reopened), it signs them out. This was intentional but now needs to be removed per user's request to behave like a normal app.
 
-### Bug 3: Duplicate candidate warning missing
-**Current**: If same candidate scans QR for a session they already completed, no warning.
-**Fix**: In `ExamMobile.handleAudioReady`, before claiming session, query `exam_results` for existing result with same `candidate_id` + `session_id` (by case). If found, show warning screen instead of proceeding.
+## Fix Plan
 
-### Bug 4: Login page hardcodes /admin redirect
-`Login.tsx` line 25: `navigate("/admin")` — should navigate to `/` and let Index handle routing based on role.
+### `src/contexts/AuthContext.tsx`
+- Remove all `SESSION_FLAG` / `sessionStorage` logic entirely
+- Follow the stack-overflow pattern: `getSession()` first to initialize, then `onAuthStateChange` for updates
+- Do NOT await async calls inside `onAuthStateChange` — use `setTimeout` to defer `checkAdminRole` outside the callback, or better: set user/session synchronously in the callback, and run `checkAdminRole` via a separate `useEffect` that watches `user`
+- Simplified approach:
+  1. `getSession()` → set user/session → check admin → set loading false
+  2. `onAuthStateChange` → set user/session only (no await)
+  3. Separate `useEffect` on `user?.id` → check admin role
+
+### `src/pages/Login.tsx`
+- Already fixed (navigates to `/`). No changes needed.
+
+### `src/pages/Index.tsx`
+- No changes needed. Already handles role-based redirect.
 
 ## Files to Change
 
-### 1. `src/contexts/AuthContext.tsx`
-- Remove `setTimeout` around `checkAdminRole`
-- Await `checkAdminRole` before setting `loading = false` in both `onAuthStateChange` and `getSession`
-- Key change: make the auth state change callback properly sequential
-
-### 2. `src/pages/Login.tsx`
-- Change `navigate("/admin")` → `navigate("/", { replace: true })` so Index.tsx handles role-based redirect
-
-### 3. `src/pages/StationDisplay.tsx`
-- In `completed` state: auto-create new session with same `case_id`, new `nanoid` token
-- Reset state to `waiting` with the new session data
-- Import `nanoid`
-
-### 4. `src/pages/ExamMobile.tsx`
-- In `handleAudioReady` (before claiming session): check if candidate already has an `exam_results` entry for any session with the same `case_id`
-- If duplicate found, show warning screen with message like "Anda sudah mengerjakan ujian ini sebelumnya"
-- Add new step `"duplicate_warning"` to ExamStep type
+**1 file**: `src/contexts/AuthContext.tsx` — rewrite auth initialization to remove one-time session logic and fix race condition.
 
