@@ -1,8 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import CandidateRegistration from "@/components/exam/CandidateRegistration";
-import QRScanner from "@/components/exam/QRScanner";
 import AudioGatekeeper from "@/components/exam/AudioGatekeeper";
 import ExamActiveView from "@/components/exam/ExamActiveView";
 import ExamCompleted from "@/pages/ExamCompleted";
@@ -10,43 +9,33 @@ import { toast } from "sonner";
 import { ShieldAlert, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ExamStep = "register" | "scan" | "gatekeeper" | "active" | "force_closed" | "completed" | "duplicate_warning";
+type ExamStep = "gatekeeper" | "active" | "force_closed" | "completed" | "duplicate_warning";
 
 const ExamMobile = () => {
-  const { sessionId: paramSessionId } = useParams<{ sessionId: string }>();
+  const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
 
-  const [step, setStep] = useState<ExamStep>(paramSessionId ? "register" : "register");
-  const [candidateId, setCandidateId] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(paramSessionId || null);
+  const [step, setStep] = useState<ExamStep>("gatekeeper");
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [sessionData, setSessionData] = useState<{
     session_start_time: string;
     time_limit_seconds: number;
   } | null>(null);
 
-  const handleRegistrationComplete = (userId: string) => {
-    setCandidateId(userId);
-    if (sessionId) {
-      setStep("gatekeeper");
-    } else {
-      setStep("scan");
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/login", { replace: true });
     }
-  };
-
-  const handleScan = (scannedSessionId: string) => {
-    setSessionId(scannedSessionId);
-    navigate(`/exam/${scannedSessionId}`, { replace: true });
-    setStep("gatekeeper");
-  };
+  }, [loading, user, navigate]);
 
   const handleAudioReady = useCallback(
     async (stream: MediaStream) => {
-      if (!sessionId || !candidateId) return;
+      if (!sessionId || !user) return;
 
       setAudioStream(stream);
 
-      // Check for duplicate: get case_id for this session, then check exam_results
+      // Check for duplicate
       const { data: currentSession } = await supabase
         .from("exam_sessions")
         .select("case_id")
@@ -54,18 +43,17 @@ const ExamMobile = () => {
         .single();
 
       if (currentSession) {
-        // Find all sessions with same case_id
         const { data: sameCaseSessions } = await supabase
           .from("exam_sessions")
           .select("id")
           .eq("case_id", currentSession.case_id);
 
         if (sameCaseSessions && sameCaseSessions.length > 0) {
-          const sessionIds = sameCaseSessions.map(s => s.id);
+          const sessionIds = sameCaseSessions.map((s) => s.id);
           const { data: existingResults } = await supabase
             .from("exam_results")
             .select("id")
-            .eq("candidate_id", candidateId)
+            .eq("candidate_id", user.id)
             .in("session_id", sessionIds)
             .limit(1);
 
@@ -82,7 +70,7 @@ const ExamMobile = () => {
         .from("exam_sessions")
         .update({
           status: "active",
-          current_candidate_id: candidateId,
+          current_candidate_id: user.id,
           session_start_time: now,
         })
         .eq("id", sessionId);
@@ -114,15 +102,15 @@ const ExamMobile = () => {
 
       setStep("active");
     },
-    [sessionId, candidateId]
+    [sessionId, user]
   );
 
-  if (step === "register") {
-    return <CandidateRegistration onComplete={handleRegistrationComplete} />;
-  }
-
-  if (step === "scan") {
-    return <QRScanner onScan={handleScan} />;
+  if (loading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (step === "gatekeeper") {
@@ -144,13 +132,13 @@ const ExamMobile = () => {
     );
   }
 
-  if (step === "active" && sessionId && candidateId && audioStream && sessionData) {
+  if (step === "active" && sessionId && audioStream && sessionData) {
     return (
       <ExamActiveView
         sessionId={sessionId}
         sessionStartTime={sessionData.session_start_time}
         timeLimitSeconds={sessionData.time_limit_seconds}
-        candidateId={candidateId}
+        candidateId={user.id}
         audioStream={audioStream}
         onForceClose={() => setStep("force_closed")}
         onComplete={() => setStep("completed")}

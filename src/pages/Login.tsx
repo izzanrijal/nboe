@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,14 +44,10 @@ const Login = () => {
               <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-2">
+          <CardFooter>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </Button>
-            <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link to="/signup" className="text-primary underline">Sign up</Link>
-            </p>
           </CardFooter>
         </form>
       </Card>
