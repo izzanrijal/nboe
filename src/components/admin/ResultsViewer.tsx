@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
@@ -18,6 +17,7 @@ interface ScoreItem {
 
 const ResultsViewer = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -32,6 +32,26 @@ const ResultsViewer = () => {
       return data;
     },
   });
+
+  // Generate signed URLs for audio files when results expand
+  useEffect(() => {
+    if (!expandedId) return;
+    const result = results.find((r: any) => r.id === expandedId);
+    if (!result?.audio_file_url || audioUrls[expandedId]) return;
+
+    const generateSignedUrl = async () => {
+      const filePath = result.audio_file_url as string;
+      const { data } = await supabase.storage
+        .from("exam-audio")
+        .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+      if (data?.signedUrl) {
+        setAudioUrls((prev) => ({ ...prev, [expandedId]: data.signedUrl }));
+      }
+    };
+
+    generateSignedUrl();
+  }, [expandedId, results, audioUrls]);
 
   const evaluateMutation = useMutation({
     mutationFn: async (resultId: string) => {
@@ -138,11 +158,15 @@ const ResultsViewer = () => {
                     <TableRow key={`${r.id}-detail`}>
                       <TableCell colSpan={5} className="bg-muted/30 p-4">
                         <div className="space-y-4">
-                          {/* Audio */}
+                          {/* Audio with signed URL */}
                           {r.audio_file_url && (
                             <div>
                               <h4 className="text-sm font-semibold mb-1">Audio Recording</h4>
-                              <audio controls src={r.audio_file_url} className="w-full max-w-md" />
+                              {audioUrls[r.id] ? (
+                                <audio controls src={audioUrls[r.id]} className="w-full max-w-md" />
+                              ) : (
+                                <p className="text-sm text-muted-foreground">Loading audio...</p>
+                              )}
                             </div>
                           )}
 

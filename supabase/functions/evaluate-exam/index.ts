@@ -23,9 +23,17 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
 
     if (!openaiKey) {
       return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!lovableApiKey) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -59,15 +67,11 @@ Deno.serve(async (req) => {
       .eq("id", session!.case_id)
       .single();
 
-    // 3. Transcribe audio via Whisper
+    // 3. Transcribe audio via OpenAI Whisper (not available in Lovable AI Gateway)
     let transcript = result.transcript;
 
     if (!transcript && result.audio_file_url) {
-      // Download audio from storage
-      const audioPath = result.audio_file_url.includes("/object/")
-        ? result.audio_file_url.split("/object/sign/exam-audio/").pop()?.split("?")[0] ||
-          result.audio_file_url.split("/object/public/exam-audio/").pop() || ""
-        : result.audio_file_url;
+      const audioPath = result.audio_file_url;
 
       const { data: audioData, error: audioErr } = await supabase.storage
         .from("exam-audio")
@@ -105,25 +109,23 @@ Deno.serve(async (req) => {
       transcript = whisperData.text;
     }
 
-    // 4. Evaluate with GPT-4o
+    // 4. Evaluate with Lovable AI Gateway (google/gemini-3-flash-preview)
     const rubric = clinicalCase?.checklist_rubric || [];
-    const systemPrompt = `You are a medical board exam evaluator. You will receive a candidate's transcript from an oral board / OSCE exam and a checklist rubric.
-
-For each item in the rubric, determine if the candidate adequately addressed it. Return a JSON array of objects with these fields:
+    const systemPrompt = `You are an objective medical examiner. Compare the provided transcript against the checklist. Return a JSON array of objects with these fields:
 - "item": the checklist item text
-- "passed": boolean
+- "passed": boolean indicating if the candidate verbally addressed it (use clinical synonym matching)
 - "comment": brief explanation
 
 Only return valid JSON array, no other text.`;
 
-    const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    const gatewayRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openaiKey}`,
+        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -135,22 +137,34 @@ Only return valid JSON array, no other text.`;
       }),
     });
 
-    if (!gptRes.ok) {
-      const err = await gptRes.text();
-      console.error("GPT error:", err);
-      return new Response(JSON.stringify({ error: "GPT evaluation failed" }), {
+    if (!gatewayRes.ok) {
+      if (gatewayRes.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (gatewayRes.status === 402) {
+        return new Response(JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const err = await gatewayRes.text();
+      console.error("AI Gateway error:", gatewayRes.status, err);
+      return new Response(JSON.stringify({ error: "AI evaluation failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const gptData = await gptRes.json();
+    const aiData = await gatewayRes.json();
     let scoreReport;
     try {
-      const content = gptData.choices[0].message.content;
+      const content = aiData.choices[0].message.content;
       scoreReport = JSON.parse(content.replace(/```json\n?/g, "").replace(/```/g, "").trim());
     } catch {
-      scoreReport = [{ item: "Parse error", passed: false, comment: gptData.choices[0].message.content }];
+      scoreReport = [{ item: "Parse error", passed: false, comment: aiData.choices[0].message.content }];
     }
 
     // 5. Update exam_results

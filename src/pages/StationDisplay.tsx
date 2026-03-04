@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { matchesKeywords } from "@/lib/keywordMatcher";
 import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
@@ -46,6 +47,8 @@ const StationDisplay = () => {
         .from("exam_sessions")
         .select("id, case_id, status, session_start_time")
         .eq("station_token", token)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error || !data) {
@@ -132,14 +135,12 @@ const StationDisplay = () => {
 
     channel
       .on("broadcast", { event: "chat" }, (payload) => {
-        const message = (payload.payload?.message as string || "").toLowerCase().trim();
+        const message = payload.payload?.message as string || "";
         if (!message) return;
 
+        // Use keywordMatcher utility for normalized matching
         for (const asset of assets) {
-          const matched = asset.trigger_keywords.some((kw) =>
-            message.includes(kw.toLowerCase())
-          );
-          if (matched) {
+          if (matchesKeywords(message, asset.trigger_keywords)) {
             setActiveAsset(asset);
             break;
           }
@@ -163,14 +164,6 @@ const StationDisplay = () => {
     setState("completed");
   }, [session?.id]);
 
-  // Reset after completion
-  const handleReset = useCallback(() => {
-    setActiveAsset(null);
-    setCaseData(null);
-    setAssets([]);
-    setState("waiting");
-  }, []);
-
   if (state === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -189,12 +182,9 @@ const StationDisplay = () => {
         <div className="text-6xl">✅</div>
         <h1 className="text-4xl font-bold text-foreground">Session Completed</h1>
         <p className="text-muted-foreground text-lg">The examination has ended.</p>
-        <button
-          onClick={handleReset}
-          className="mt-4 px-6 py-3 bg-primary text-primary-foreground rounded-lg text-lg font-medium hover:bg-primary/90 transition-colors"
-        >
-          Ready for Next Candidate
-        </button>
+        <p className="text-muted-foreground text-sm">
+          Deploy a new session from the Admin Dashboard to begin the next exam.
+        </p>
       </div>
     );
   }
