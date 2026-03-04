@@ -1,84 +1,51 @@
 
 
-# Fix: Auto-regenerate Session Fails on Station Display
+# Enhanced AI Grading: Answer Key, Scoring, Reasoning & Tips
 
-## Root Cause
+## What Changes
 
-The Station Display page (`/station/:token`) runs **without authentication** -- it's a public screen. The `autoRegenerateSession` function tries to `INSERT` a new row into `exam_sessions`, but the RLS policies on that table only allow inserts via the "Admins manage sessions" policy (requires admin role). Since the station page has no authenticated user, the insert is silently rejected by RLS, leaving the page stuck on "Ujian Selesai".
+### 1. Add "Kunci Jawaban" (Answer Key) field to clinical_cases
+A new `answer_key_text` column on `clinical_cases` where admin provides the complete correct answers for all questions. This is separate from `questions_text` (the questions shown to candidates).
 
-Additionally, the polling fallback (every 3s) keeps detecting `status === "completed"` and fires `autoRegenerateSession` multiple times, compounding the issue.
+**Database migration**: `ALTER TABLE clinical_cases ADD COLUMN answer_key_text text NOT NULL DEFAULT '';`
 
-## Solution
+### 2. Update CaseForm to include Answer Key input
+Add a new `Textarea` field labeled "Kunci Jawaban (Answer Key)" below the questions field, with a helper text explaining that this is the reference answer the AI will use for grading.
 
-### 1. Create a database function with SECURITY DEFINER to regenerate sessions
+### 3. Revamp evaluate-exam system prompt
+The AI prompt changes to:
+- Receive the **questions + answer key** as the grading reference
+- Compare candidate transcript against the answer key for accuracy
+- Output a **numeric score 0-100** (not just points-based)
+- Score ≥ 68 = LULUS, < 68 = TIDAK LULUS
+- Score 100 only if ALL critical points are correctly explained
+- Critical fail still applies (automatic TIDAK LULUS)
+- New required output fields: `"score"` (0-100), `"reasoning"` (why the AI gave that score), `"tips"` (actionable advice for the candidate to improve)
 
-Create a Postgres function `regenerate_station_session(case_id, new_token)` that:
-- Inserts a new `exam_sessions` row with `status = 'waiting'`
-- Runs as `SECURITY DEFINER` so it bypasses RLS
-- Returns the new session row
+**New JSON output format:**
+```json
+{
+  "items": [...],
+  "totalScore": number,
+  "totalPossible": number,
+  "score": number,          // 0-100 percentage
+  "passStatus": "LULUS" | "TIDAK LULUS",
+  "hasCriticalFail": boolean,
+  "reasoning": "string explaining why this score was given",
+  "tips": "string with improvement advice"
+}
+```
 
-### 2. Call the function via `supabase.rpc()` in StationDisplay
-
-Replace the direct `.insert()` in `autoRegenerateSession` with `supabase.rpc('regenerate_station_session', { ... })`.
-
-### 3. Prevent duplicate regeneration calls
-
-Add a `regeneratingRef` guard so `autoRegenerateSession` only runs once, preventing the polling from triggering it repeatedly.
-
-### 4. Add try/catch for error visibility
-
-Wrap the regeneration in try/catch and log errors to console.
+### 4. Update ResultsViewer to display new fields
+- Show the **score** as a prominent badge (e.g., "78/100 — LULUS")
+- Display **reasoning** section below the rubric items
+- Display **tips** section with improvement advice
+- Keep existing rubric item breakdown
 
 ## Files to Modify
 
-- **Database migration**: Create `regenerate_station_session` function
-- **`src/pages/StationDisplay.tsx`**: Use `rpc()` instead of `.insert()`, add duplicate-call guard and error handling
-
-## Technical Details
-
-```sql
-CREATE OR REPLACE FUNCTION public.regenerate_station_session(
-  _case_id uuid,
-  _new_token text
-)
-RETURNS TABLE(id uuid, case_id uuid, status text, session_start_time timestamptz)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  RETURN QUERY
-  INSERT INTO public.exam_sessions (case_id, station_token, status)
-  VALUES (_case_id, _new_token, 'waiting')
-  RETURNING exam_sessions.id, exam_sessions.case_id, exam_sessions.status, exam_sessions.session_start_time;
-END;
-$$;
-```
-
-```typescript
-// StationDisplay.tsx changes
-const regeneratingRef = useRef(false);
-
-const autoRegenerateSession = useCallback(async (caseId: string) => {
-  if (regeneratingRef.current) return;
-  regeneratingRef.current = true;
-  try {
-    const newToken = nanoid(10);
-    const { data, error } = await supabase.rpc('regenerate_station_session', {
-      _case_id: caseId,
-      _new_token: newToken,
-    });
-    if (error || !data?.[0]) { regeneratingRef.current = false; return; }
-    setSession(data[0]);
-    setCurrentToken(newToken);
-    setActiveAsset(null);
-    setCaseData(null);
-    setState("waiting");
-    window.history.replaceState(null, "", `/station/${newToken}`);
-  } catch (e) {
-    console.error("Failed to regenerate session:", e);
-    regeneratingRef.current = false;
-  }
-}, []);
-```
+- **Database migration**: Add `answer_key_text` column to `clinical_cases`
+- **`src/components/admin/CaseForm.tsx`**: Add answer key textarea
+- **`supabase/functions/evaluate-exam/index.ts`**: Fetch `answer_key_text`, update system prompt for percentage scoring + reasoning + tips
+- **`src/components/admin/ResultsViewer.tsx`**: Render score, reasoning, and tips sections
 
