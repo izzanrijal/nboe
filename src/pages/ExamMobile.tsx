@@ -7,9 +7,10 @@ import AudioGatekeeper from "@/components/exam/AudioGatekeeper";
 import ExamActiveView from "@/components/exam/ExamActiveView";
 import ExamCompleted from "@/pages/ExamCompleted";
 import { toast } from "sonner";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-type ExamStep = "register" | "scan" | "gatekeeper" | "active" | "force_closed" | "completed";
+type ExamStep = "register" | "scan" | "gatekeeper" | "active" | "force_closed" | "completed" | "duplicate_warning";
 
 const ExamMobile = () => {
   const { sessionId: paramSessionId } = useParams<{ sessionId: string }>();
@@ -26,7 +27,6 @@ const ExamMobile = () => {
 
   const handleRegistrationComplete = (userId: string) => {
     setCandidateId(userId);
-    // If we already have a sessionId from URL, skip scanning
     if (sessionId) {
       setStep("gatekeeper");
     } else {
@@ -45,6 +45,36 @@ const ExamMobile = () => {
       if (!sessionId || !candidateId) return;
 
       setAudioStream(stream);
+
+      // Check for duplicate: get case_id for this session, then check exam_results
+      const { data: currentSession } = await supabase
+        .from("exam_sessions")
+        .select("case_id")
+        .eq("id", sessionId)
+        .single();
+
+      if (currentSession) {
+        // Find all sessions with same case_id
+        const { data: sameCaseSessions } = await supabase
+          .from("exam_sessions")
+          .select("id")
+          .eq("case_id", currentSession.case_id);
+
+        if (sameCaseSessions && sameCaseSessions.length > 0) {
+          const sessionIds = sameCaseSessions.map(s => s.id);
+          const { data: existingResults } = await supabase
+            .from("exam_results")
+            .select("id")
+            .eq("candidate_id", candidateId)
+            .in("session_id", sessionIds)
+            .limit(1);
+
+          if (existingResults && existingResults.length > 0) {
+            setStep("duplicate_warning");
+            return;
+          }
+        }
+      }
 
       // Claim session and start exam
       const now = new Date().toISOString();
@@ -97,6 +127,21 @@ const ExamMobile = () => {
 
   if (step === "gatekeeper") {
     return <AudioGatekeeper onReady={handleAudioReady} />;
+  }
+
+  if (step === "duplicate_warning") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-6">
+        <AlertTriangle className="h-20 w-20 text-destructive" />
+        <h1 className="text-3xl font-bold text-foreground">Peringatan</h1>
+        <p className="text-muted-foreground text-center max-w-sm">
+          Anda sudah mengerjakan ujian ini sebelumnya. Anda tidak dapat mengerjakan ujian yang sama dua kali.
+        </p>
+        <Button variant="outline" onClick={() => navigate("/exam")}>
+          Kembali
+        </Button>
+      </div>
+    );
   }
 
   if (step === "active" && sessionId && candidateId && audioStream && sessionData) {
