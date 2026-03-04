@@ -21,7 +21,11 @@ interface ScoreReport {
   items: ScoreItem[];
   totalScore?: number;
   totalPossible?: number;
+  score?: number;
+  passStatus?: string;
   hasCriticalFail?: boolean;
+  reasoning?: string;
+  tips?: string;
 }
 
 const ResultsViewer = () => {
@@ -117,7 +121,16 @@ const ResultsViewer = () => {
 
   const getOverallDisplay = (report: Json | null): { label: string; variant: "default" | "destructive" | "outline" } => {
     const parsed = parseScoreReport(report);
-    if (parsed.items.length === 0) return { label: "—", variant: "outline" };
+    if (parsed.items.length === 0 && parsed.score == null) return { label: "—", variant: "outline" };
+
+    // New format with score
+    if (parsed.score != null) {
+      const status = parsed.passStatus || (parsed.score >= 68 ? "LULUS" : "TIDAK LULUS");
+      if (parsed.hasCriticalFail || status === "TIDAK LULUS") {
+        return { label: `${parsed.score}/100 — TIDAK LULUS`, variant: "destructive" };
+      }
+      return { label: `${parsed.score}/100 — LULUS`, variant: "default" };
+    }
 
     if (parsed.hasCriticalFail) {
       return { label: "TIDAK LULUS", variant: "destructive" };
@@ -128,7 +141,6 @@ const ResultsViewer = () => {
       return { label: `${pct}% (${parsed.totalScore}/${parsed.totalPossible})`, variant: "default" };
     }
 
-    // Legacy fallback
     const passed = parsed.items.filter((i) => i.passed).length;
     return { label: `${passed}/${parsed.items.length}`, variant: "default" };
   };
@@ -257,11 +269,37 @@ const ResultsViewer = () => {
                                       <span>{parsed.totalScore}/{parsed.totalPossible} pts ({Math.round((parsed.totalScore! / parsed.totalPossible) * 100)}%)</span>
                                     </div>
                                   )}
+                                  {parsed.score != null && (
+                                    <div className="flex items-center justify-between text-base font-bold border-t border-border pt-3 mt-3">
+                                      <span>Nilai Akhir</span>
+                                      <Badge variant={parsed.score >= 68 && !parsed.hasCriticalFail ? "default" : "destructive"} className="text-base px-3 py-1">
+                                        {parsed.score}/100 — {parsed.passStatus || (parsed.score >= 68 ? "LULUS" : "TIDAK LULUS")}
+                                      </Badge>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <p className="text-sm text-muted-foreground">No score report. Run AI Evaluation to generate.</p>
                               )}
                             </div>
+
+                            {parsed.reasoning && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-1">💡 Alasan Penilaian (Reasoning)</h4>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">
+                                  {parsed.reasoning}
+                                </p>
+                              </div>
+                            )}
+
+                            {parsed.tips && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-1">📝 Tips Perbaikan</h4>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">
+                                  {parsed.tips}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

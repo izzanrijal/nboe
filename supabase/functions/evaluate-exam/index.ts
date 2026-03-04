@@ -57,11 +57,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2. Fetch session → case
+    // 2. Fetch session → case (including answer_key_text)
     const { data: session } = await supabase
       .from("exam_sessions").select("case_id").eq("id", result.session_id).single();
     const { data: clinicalCase } = await supabase
-      .from("clinical_cases").select("checklist_rubric, title").eq("id", session!.case_id).single();
+      .from("clinical_cases").select("checklist_rubric, title, questions_text, answer_key_text").eq("id", session!.case_id).single();
 
     // 3. Transcribe audio via OpenAI Whisper
     let transcript = result.transcript;
@@ -93,10 +93,9 @@ Deno.serve(async (req) => {
       transcript = whisperData.text;
     }
 
-    // 4. Parse rubric — support new and legacy format
+    // 4. Parse rubric
     const rawRubric = clinicalCase?.checklist_rubric;
     let rubricData: RubricData;
-
     if (rawRubric && typeof rawRubric === "object" && !Array.isArray(rawRubric) && "enabled" in rawRubric) {
       rubricData = rawRubric as RubricData;
     } else if (Array.isArray(rawRubric)) {
@@ -108,46 +107,14 @@ Deno.serve(async (req) => {
       rubricData = { enabled: false, items: [] };
     }
 
-    // 5. Evaluate with Lovable AI Gateway
-    let systemPrompt: string;
+    const answerKey = clinicalCase?.answer_key_text || "";
+    const questions = clinicalCase?.questions_text || "";
 
-    if (rubricData.enabled && rubricData.items.length > 0) {
-      systemPrompt = `You are an objective medical examiner. Compare the provided transcript against the weighted checklist rubric.
+    // 5. Build system prompt with answer key grading
+    const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions);
+    const userContent = buildUserContent(clinicalCase, rubricData, answerKey, questions, transcript);
 
-Each rubric item has:
-- "text": the expected action/phrase
-- "points": the weight/score for this item
-- "isCritical": if true, failing this item means the candidate automatically fails
-
-Return a JSON object with these fields:
-{
-  "items": [
-    { "item": "checklist text", "passed": boolean, "comment": "brief explanation", "points": number, "isCritical": boolean }
-  ],
-  "totalScore": number (sum of passed items' points),
-  "totalPossible": number (sum of all items' points),
-  "hasCriticalFail": boolean (true if any critical item is not passed)
-}
-
-Only return valid JSON, no other text.`;
-    } else {
-      systemPrompt = `You are an objective medical examiner. Evaluate the candidate's transcript for the given case.
-Return a JSON object:
-{
-  "items": [
-    { "item": "aspect evaluated", "passed": boolean, "comment": "brief explanation" }
-  ],
-  "totalScore": 0,
-  "totalPossible": 0,
-  "hasCriticalFail": false
-}
-Only return valid JSON, no other text.`;
-    }
-
-    const userContent = rubricData.enabled && rubricData.items.length > 0
-      ? `Case: ${clinicalCase?.title}\n\nWeighted Checklist Rubric:\n${JSON.stringify(rubricData.items, null, 2)}\n\nCandidate Transcript:\n${transcript || "(no transcript available)"}`
-      : `Case: ${clinicalCase?.title}\n\nCandidate Transcript:\n${transcript || "(no transcript available)"}`;
-
+    // 6. Call Lovable AI Gateway
     const gatewayRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -188,10 +155,10 @@ Only return valid JSON, no other text.`;
       const content = aiData.choices[0].message.content;
       scoreReport = JSON.parse(content.replace(/```json\n?/g, "").replace(/```/g, "").trim());
     } catch {
-      scoreReport = { items: [{ item: "Parse error", passed: false, comment: aiData.choices[0].message.content }], totalScore: 0, totalPossible: 0, hasCriticalFail: false };
+      scoreReport = { items: [], totalScore: 0, totalPossible: 0, score: 0, passStatus: "TIDAK LULUS", hasCriticalFail: false, reasoning: "Failed to parse AI response", tips: "" };
     }
 
-    // 6. Update exam_results
+    // 7. Update exam_results
     const { error: updateErr } = await supabase
       .from("exam_results")
       .update({ transcript: transcript || null, ai_score_report: scoreReport })
@@ -214,3 +181,83 @@ Only return valid JSON, no other text.`;
     });
   }
 });
+
+function buildSystemPrompt(rubricData: RubricData, answerKey: string, questions: string): string {
+  const hasRubric = rubricData.enabled && rubricData.items.length > 0;
+  const hasAnswerKey = answerKey.trim().length > 0;
+
+  let prompt = `You are an objective medical examiner evaluating a candidate's oral exam transcript.
+
+SCORING RULES:
+- Score range: 0-100
+- Score >= 68 = "LULUS" (pass), Score < 68 = "TIDAK LULUS" (fail)
+- Score 100 ONLY if ALL critical points from the answer key are correctly and thoroughly explained
+- If any rubric item marked as "isCritical" is failed, the candidate automatically gets "TIDAK LULUS" regardless of score
+`;
+
+  if (hasAnswerKey) {
+    prompt += `
+You will receive the QUESTIONS and the ANSWER KEY (correct answers). Compare the candidate's transcript against the answer key to determine accuracy and completeness.
+`;
+  }
+
+  if (hasRubric) {
+    prompt += `
+You will also receive a weighted checklist rubric. Each rubric item has:
+- "text": the expected action/phrase
+- "points": the weight/score for this item
+- "isCritical": if true, failing this item means automatic TIDAK LULUS
+
+Evaluate each rubric item against the transcript.
+`;
+  }
+
+  prompt += `
+Return a JSON object with these fields:
+{
+  "items": [
+    { "item": "checklist/evaluation point", "passed": boolean, "comment": "brief explanation", "points": number, "isCritical": boolean }
+  ],
+  "totalScore": number,
+  "totalPossible": number,
+  "score": number,
+  "passStatus": "LULUS" | "TIDAK LULUS",
+  "hasCriticalFail": boolean,
+  "reasoning": "Detailed explanation in Bahasa Indonesia of why you gave this score. Reference specific parts of the candidate's answer compared to the answer key.",
+  "tips": "Actionable advice in Bahasa Indonesia for the candidate to improve their answer. Be specific about what they missed or could explain better."
+}
+
+- "score" is a 0-100 percentage reflecting overall answer quality
+- "passStatus" must be "LULUS" if score >= 68 and no critical fails, otherwise "TIDAK LULUS"
+- "reasoning" and "tips" must be in Bahasa Indonesia
+
+Only return valid JSON, no other text.`;
+
+  return prompt;
+}
+
+function buildUserContent(
+  clinicalCase: any,
+  rubricData: RubricData,
+  answerKey: string,
+  questions: string,
+  transcript: string | null
+): string {
+  let content = `Case: ${clinicalCase?.title}\n\n`;
+
+  if (questions.trim()) {
+    content += `PERTANYAAN (Questions):\n${questions}\n\n`;
+  }
+
+  if (answerKey.trim()) {
+    content += `KUNCI JAWABAN (Answer Key / Correct Answers):\n${answerKey}\n\n`;
+  }
+
+  if (rubricData.enabled && rubricData.items.length > 0) {
+    content += `Weighted Checklist Rubric:\n${JSON.stringify(rubricData.items, null, 2)}\n\n`;
+  }
+
+  content += `Candidate Transcript:\n${transcript || "(no transcript available)"}`;
+
+  return content;
+}

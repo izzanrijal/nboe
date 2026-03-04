@@ -1,0 +1,1 @@
+ALTER TABLE clinical_cases ADD COLUMN answer_key_text text NOT NULL DEFAULT '';

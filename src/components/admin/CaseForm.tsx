@@ -21,6 +21,7 @@ interface CaseFormProps {
     time_limit_seconds: number;
     reading_time_seconds?: number;
     questions_text?: string;
+    answer_key_text?: string;
   } | null;
   onClose: () => void;
 }
@@ -45,6 +46,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
   const [timeLimitSeconds, setTimeLimitSeconds] = useState(existingCase?.time_limit_seconds ?? 360);
   const [readingTimeSeconds, setReadingTimeSeconds] = useState(existingCase?.reading_time_seconds ?? 120);
   const [questionsText, setQuestionsText] = useState(existingCase?.questions_text ?? "");
+  const [answerKeyText, setAnswerKeyText] = useState(existingCase?.answer_key_text ?? "");
   const [rubricData, setRubricData] = useState<RubricData>(
     parseRubricData(existingCase?.checklist_rubric)
   );
@@ -61,6 +63,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         time_limit_seconds: timeLimitSeconds,
         reading_time_seconds: readingTimeSeconds,
         questions_text: questionsText,
+        answer_key_text: answerKeyText,
         checklist_rubric: rubricData as any,
       };
 
@@ -123,6 +126,20 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
           onChange={(e) => setQuestionsText(e.target.value)}
           rows={4}
           placeholder="Pertanyaan yang ditampilkan setelah waktu baca selesai, bersama kasus di atas..."
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="answerKey">Kunci Jawaban (Answer Key)</Label>
+        <p className="text-xs text-muted-foreground">
+          Jawaban lengkap dan benar sebagai referensi AI untuk memberikan nilai.
+        </p>
+        <Textarea
+          id="answerKey"
+          value={answerKeyText}
+          onChange={(e) => setAnswerKeyText(e.target.value)}
+          rows={6}
+          placeholder="Tuliskan jawaban lengkap yang benar untuk setiap pertanyaan di atas..."
         />
       </div>
 
