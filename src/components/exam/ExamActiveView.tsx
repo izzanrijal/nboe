@@ -151,9 +151,10 @@ const ExamActiveView = ({
     completingRef.current = true;
 
     try {
+      let fileName: string | null = null;
       const blob = await stop();
       if (blob && blob.size > 0) {
-        const fileName = `${sessionId}_${candidateId}_${Date.now()}.webm`;
+        fileName = `${sessionId}_${candidateId}_${Date.now()}.webm`;
         const { error: uploadError } = await supabase.storage
           .from("exam-audio")
           .upload(fileName, blob, { contentType: "audio/webm" });
@@ -161,12 +162,13 @@ const ExamActiveView = ({
           console.error("Upload error:", uploadError);
           toast.error("Failed to upload audio recording");
         }
-        await supabase.from("exam_results").insert({
-          session_id: sessionId,
-          candidate_id: candidateId,
-          audio_file_url: fileName,
-        });
       }
+      // Always insert result to prevent retakes
+      await supabase.from("exam_results").insert({
+        session_id: sessionId,
+        candidate_id: candidateId,
+        audio_file_url: fileName,
+      });
       await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
       onComplete();
     } catch (err) {
