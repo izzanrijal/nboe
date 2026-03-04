@@ -1,35 +1,26 @@
 
 
-# Fix: Auto-regeneration Gets Overridden by Polling
+# Add "Delete Audio Only" Button to ResultsViewer
 
-## Root Cause
+## Changes (1 file: `src/components/admin/ResultsViewer.tsx`)
 
-Race condition between `autoRegenerateSession` and the 3-second polling fallback:
+### 1. Add a "Delete Audio" mutation
+- Deletes the audio file from `exam-audio` storage bucket
+- Sets `audio_file_url` to `null` on the `exam_results` row (preserving transcript and AI score)
+- Invalidates query cache to refresh UI
 
-1. Exam completes → state = "completed_screen", `autoRegenerateSession` scheduled in 5s
-2. Polling (every 3s) keeps detecting old session as "completed" → calls `updateFromRow` → sets state back to "completed_screen" and schedules **more** `autoRegenerateSession` calls
-3. When `autoRegenerateSession` succeeds and sets state to "waiting", the next poll callback (still referencing old session ID in its closure) fires and overwrites state back to "completed_screen"
-4. `regeneratingRef` is never reset on success, so no further regeneration can happen → stuck on "Ujian Selesai" forever
+### 2. Add "Hapus Audio" button in the expanded detail section
+- Shown next to the audio player only when `audio_file_url` exists
+- Confirm dialog before deletion
+- After deletion, the audio section disappears
 
-## Fix (1 file: `src/pages/StationDisplay.tsx`)
+### 3. Disable "Evaluate" button when audio is deleted
+- Condition: `!r.audio_file_url` disables the Evaluate button (since the edge function needs audio to transcribe)
+- Add tooltip or title explaining why it's disabled
 
-1. **Guard `updateFromRow` against regeneration in progress**: If `regeneratingRef.current` is true, skip setting state to "completed_screen" — regeneration is already handling the transition.
+### 4. Keep existing data intact
+- Transcript, AI score report, reasoning, tips all remain visible
+- Only the audio file and its reference are removed
 
-2. **Reset `regeneratingRef` on success**: After successful regeneration, reset the flag so future completions can also auto-regenerate.
-
-3. **Stop polling when in completed_screen state**: Add early return in poll callback when state is already "completed_screen" to prevent repeated triggers.
-
-```typescript
-// In updateFromRow:
-if (updated.status === "completed" || updated.status === "force_closed") {
-  if (regeneratingRef.current) return; // Don't override if regenerating
-  setState("completed_screen");
-  // ...
-}
-
-// In autoRegenerateSession, after success:
-setState("waiting");
-window.history.replaceState(null, "", `/station/${newToken}`);
-regeneratingRef.current = false; // Reset for next cycle
-```
+No database migration needed -- just updating `audio_file_url` to `null` which is already nullable.
 
