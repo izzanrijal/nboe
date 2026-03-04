@@ -93,16 +93,34 @@ const ExamMobile = () => {
   );
 
   const handleReadingComplete = useCallback(
-    (info: { caseTitle: string; casePrompt: string; questionsText: string; timeLimitSeconds: number }) => {
+    async (info: { caseTitle: string; casePrompt: string; questionsText: string; timeLimitSeconds: number }) => {
       const now = new Date().toISOString();
 
       // Update session_start_time to NOW (exam timer starts after reading)
       if (sessionId) {
-        supabase
+        const { error } = await supabase
           .from("exam_sessions")
           .update({ session_start_time: now })
-          .eq("id", sessionId)
-          .then();
+          .eq("id", sessionId);
+        if (error) {
+          console.error("Failed to update session_start_time:", error);
+        }
+      }
+
+      // Check audio stream health
+      if (audioStream) {
+        const tracks = audioStream.getAudioTracks();
+        if (tracks.length === 0 || tracks.every(t => t.readyState === "ended")) {
+          console.warn("Audio stream tracks ended during reading phase, re-requesting...");
+          try {
+            const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setAudioStream(newStream);
+          } catch (err) {
+            console.error("Failed to re-acquire audio:", err);
+            toast.error("Mikrofon tidak tersedia. Silakan izinkan akses mikrofon.");
+            return;
+          }
+        }
       }
 
       setCaseInfo({
@@ -116,7 +134,7 @@ const ExamMobile = () => {
       });
       setStep("active");
     },
-    [sessionId]
+    [sessionId, audioStream]
   );
 
   if (loading || !user) {
@@ -186,6 +204,17 @@ const ExamMobile = () => {
 
   if (step === "completed") {
     return <ExamCompleted />;
+  }
+
+  // Fallback: step is "active" but conditions not fully met
+  if (step === "active") {
+    console.warn("Active step but missing conditions:", { sessionId, audioStream: !!audioStream, sessionData: !!sessionData });
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
+        <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full" />
+        <p className="text-muted-foreground text-center">Mempersiapkan ujian...</p>
+      </div>
+    );
   }
 
   return null;

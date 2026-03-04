@@ -84,24 +84,41 @@ const StationDisplay = () => {
     }
   }, []);
 
-  // Subscribe to session changes
+  // Subscribe to session changes + polling fallback
   useEffect(() => {
     if (!session?.id) return;
+
+    const updateFromRow = (updated: any) => {
+      setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
+      if (updated.status === "active" && updated.session_start_time) setState("active");
+      else if (updated.status === "completed" || updated.status === "force_closed") {
+        if (session?.case_id) {
+          autoRegenerateSession(session.case_id);
+        }
+      }
+    };
+
     const channel = supabase
       .channel(`session-status-${session.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "exam_sessions", filter: `id=eq.${session.id}` }, (payload) => {
-        const updated = payload.new as any;
-        setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
-        if (updated.status === "active" && updated.session_start_time) setState("active");
-        else if (updated.status === "completed" || updated.status === "force_closed") {
-          // Auto-regenerate on completion
-          if (session?.case_id) {
-            autoRegenerateSession(session.case_id);
-          }
-        }
+        updateFromRow(payload.new);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // Polling fallback every 3s
+    const pollInterval = setInterval(async () => {
+      const { data } = await supabase
+        .from("exam_sessions")
+        .select("id, case_id, status, session_start_time")
+        .eq("id", session.id)
+        .single();
+      if (data) updateFromRow(data);
+    }, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [session?.id, session?.case_id, autoRegenerateSession]);
 
   // Fetch case data and assets when active
