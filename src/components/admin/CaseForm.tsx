@@ -23,6 +23,7 @@ interface CaseFormProps {
     reading_time_seconds?: number;
     questions_text?: string;
     answer_key_text?: string;
+    show_results_to_candidate?: boolean;
   } | null;
   onClose: () => void;
 }
@@ -48,6 +49,9 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
   const [readingTimeSeconds, setReadingTimeSeconds] = useState(existingCase?.reading_time_seconds ?? 120);
   const [questionsText, setQuestionsText] = useState(existingCase?.questions_text ?? "");
   const [answerKeyText, setAnswerKeyText] = useState(existingCase?.answer_key_text ?? "");
+  const [showResultsToCandidate, setShowResultsToCandidate] = useState(
+    existingCase?.show_results_to_candidate ?? false
+  );
   const [rubricData, setRubricData] = useState<RubricData>(
     parseRubricData(existingCase?.checklist_rubric)
   );
@@ -65,6 +69,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         reading_time_seconds: readingTimeSeconds,
         questions_text: questionsText,
         answer_key_text: answerKeyText,
+        show_results_to_candidate: showResultsToCandidate,
         checklist_rubric: rubricData as any,
       };
 
