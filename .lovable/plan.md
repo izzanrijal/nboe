@@ -1,44 +1,48 @@
 
 
-# Sync Migrations & Consolidate for Portability
+# Show Candidate Results on /exam Page
 
-## Issue Found
+## Overview
 
-**Critical bug**: The "Hapus Audio" feature added previously will fail because there is **no storage RLS policy allowing admins to delete from the `exam-audio` bucket**. The migrations only define INSERT and SELECT policies for that bucket.
+Add a `show_results_to_candidate` boolean toggle to `clinical_cases`. When enabled, candidates see their evaluation details (score, rubric, tips) on `/exam`. When disabled, they only see a list of attempted sessions without scores.
 
-## Plan
+## Changes
 
-### 1. Add missing storage policy (new migration)
-
+### 1. Database Migration
+Add column to `clinical_cases`:
 ```sql
-CREATE POLICY "Admins can delete exam audio"
-ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'exam-audio' AND public.has_role(auth.uid(), 'admin'));
+ALTER TABLE public.clinical_cases
+ADD COLUMN show_results_to_candidate boolean NOT NULL DEFAULT false;
 ```
 
-### 2. Create consolidated seed migration
+### 2. CaseForm Toggle (src/components/admin/CaseForm.tsx)
+- Add state for `showResultsToCandidate` (from `existingCase` or default `false`)
+- Add a Switch toggle labeled "Tampilkan Nilai ke Peserta"
+- Include in mutation payload
 
-Create a single file `supabase/migrations/00000000000000_seed.sql` that contains the **complete** database setup in one place — all tables, columns, functions, triggers, RLS policies, storage buckets, and storage policies — as they exist today. This serves as documentation and makes it easy to set up a fresh Supabase instance.
+### 3. Revamp ExamEntry Page (src/pages/ExamEntry.tsx)
+Currently just shows a QR scanner. Change to a two-section layout:
+- **Top**: QR Scanner button/section to start new exam
+- **Bottom**: "Riwayat Ujian" (Exam History) section
 
-The existing 8 incremental migrations will remain untouched (they're already applied). The seed file acts as a reference/portable setup script with clear comments for each section:
+The history section queries `exam_results` for `candidate_id = auth.uid()`, joined with `exam_sessions → clinical_cases` to get title + `show_results_to_candidate`.
 
-1. **Enums** — `app_role`
-2. **Tables** — profiles, user_roles, clinical_cases, case_assets, exam_sessions, exam_results (with all columns including nim, reading_time_seconds, questions_text, answer_key_text, category, answer_text)
-3. **Functions** — `has_role()`, `handle_new_user()`, `regenerate_station_session()`
-4. **Triggers** — `on_auth_user_created`
-5. **RLS Policies** — all table policies including public read and claim policies
-6. **Storage** — buckets + all storage policies (including the new delete policy)
-7. **Realtime** — `supabase_realtime` publication
+**If `show_results_to_candidate = true`**: Show expandable rows with score badge, rubric items, reasoning, tips (reuse the display logic from ResultsViewer but read-only, no actions).
 
-### 3. Update edge function CORS headers
+**If `show_results_to_candidate = false`**: Show only case title, date attempted, and a "Selesai" status badge — no score, no transcript, no rubric.
 
-`register-candidate` has outdated CORS headers (missing the `x-supabase-client-*` headers). Sync it with the pattern used in `evaluate-exam` and `exam-chat`.
+### 4. New Component: CandidateResultsList (src/components/exam/CandidateResultsList.tsx)
+- Fetches `exam_results` with joins to `exam_sessions.clinical_cases`
+- Maps over results, renders cards/rows
+- Conditionally shows score details based on `clinical_cases.show_results_to_candidate`
+- Read-only version of the score report display (no evaluate/delete buttons)
 
-## Files Changed
+### Files Changed
 
 | File | Action |
 |------|--------|
-| New migration SQL | Add `Admins can delete exam audio` storage policy |
-| `supabase/migrations/00000000000000_seed.sql` | Create consolidated reference migration |
-| `supabase/functions/register-candidate/index.ts` | Update CORS headers |
+| Migration SQL | Add `show_results_to_candidate` column |
+| `src/components/admin/CaseForm.tsx` | Add Switch toggle + state + payload |
+| `src/pages/ExamEntry.tsx` | Add history section below QR scanner |
+| `src/components/exam/CandidateResultsList.tsx` | New component for candidate exam history |
 
