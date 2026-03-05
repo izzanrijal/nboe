@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import QRScanner from "@/components/exam/QRScanner";
+import CandidateResultsList from "@/components/exam/CandidateResultsList";
+import { Separator } from "@/components/ui/separator";
 
 const ExamEntry = () => {
   const { user, loading } = useAuth();
@@ -25,7 +27,13 @@ const ExamEntry = () => {
     navigate(`/exam/${sessionId}`, { replace: true });
   };
 
-  return <QRScanner onScan={handleScan} />;
+  return (
+    <div className="min-h-screen bg-background p-4 max-w-2xl mx-auto space-y-6">
+      <QRScanner onScan={handleScan} />
+      <Separator />
+      <CandidateResultsList />
+    </div>
+  );
 };
 
 export default ExamEntry;
