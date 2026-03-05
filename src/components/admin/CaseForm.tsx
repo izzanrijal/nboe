@@ -172,6 +172,20 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         </div>
       </div>
 
+      <div className="flex items-center justify-between rounded-lg border border-border p-4">
+        <div className="space-y-0.5">
+          <Label htmlFor="showResults">Tampilkan Nilai ke Peserta</Label>
+          <p className="text-xs text-muted-foreground">
+            Bila aktif, peserta dapat melihat hasil evaluasi AI di halaman ujian mereka.
+          </p>
+        </div>
+        <Switch
+          id="showResults"
+          checked={showResultsToCandidate}
+          onCheckedChange={setShowResultsToCandidate}
+        />
+      </div>
+
       <RubricBuilder data={rubricData} onChange={setRubricData} />
 
       {existingCase?.id && (
