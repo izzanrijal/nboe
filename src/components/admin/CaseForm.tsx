@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 import RubricBuilder, { type RubricData } from "./RubricBuilder";
 import AssetUploader from "./AssetUploader";
 
@@ -22,6 +23,7 @@ interface CaseFormProps {
     reading_time_seconds?: number;
     questions_text?: string;
     answer_key_text?: string;
+    show_results_to_candidate?: boolean;
   } | null;
   onClose: () => void;
 }
@@ -47,6 +49,9 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
   const [readingTimeSeconds, setReadingTimeSeconds] = useState(existingCase?.reading_time_seconds ?? 120);
   const [questionsText, setQuestionsText] = useState(existingCase?.questions_text ?? "");
   const [answerKeyText, setAnswerKeyText] = useState(existingCase?.answer_key_text ?? "");
+  const [showResultsToCandidate, setShowResultsToCandidate] = useState(
+    existingCase?.show_results_to_candidate ?? false
+  );
   const [rubricData, setRubricData] = useState<RubricData>(
     parseRubricData(existingCase?.checklist_rubric)
   );
@@ -64,6 +69,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         reading_time_seconds: readingTimeSeconds,
         questions_text: questionsText,
         answer_key_text: answerKeyText,
+        show_results_to_candidate: showResultsToCandidate,
         checklist_rubric: rubricData as any,
       };
 
@@ -164,6 +170,20 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
             onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
           />
         </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-border p-4">
+        <div className="space-y-0.5">
+          <Label htmlFor="showResults">Tampilkan Nilai ke Peserta</Label>
+          <p className="text-xs text-muted-foreground">
+            Bila aktif, peserta dapat melihat hasil evaluasi AI di halaman ujian mereka.
+          </p>
+        </div>
+        <Switch
+          id="showResults"
+          checked={showResultsToCandidate}
+          onCheckedChange={setShowResultsToCandidate}
+        />
       </div>
 
       <RubricBuilder data={rubricData} onChange={setRubricData} />

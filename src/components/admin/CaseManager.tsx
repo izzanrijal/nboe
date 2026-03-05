@@ -19,6 +19,8 @@ interface ClinicalCase {
   time_limit_seconds: number;
   reading_time_seconds: number;
   questions_text: string;
+  answer_key_text: string;
+  show_results_to_candidate: boolean;
 }
 
 const CaseManager = () => {

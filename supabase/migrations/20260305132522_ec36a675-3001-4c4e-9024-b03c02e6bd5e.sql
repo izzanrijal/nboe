@@ -1,0 +1,1 @@
+ALTER TABLE public.clinical_cases ADD COLUMN show_results_to_candidate boolean NOT NULL DEFAULT false;

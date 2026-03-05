@@ -66,6 +66,7 @@ export type Database = {
           initial_prompt: string
           questions_text: string
           reading_time_seconds: number
+          show_results_to_candidate: boolean
           time_limit_seconds: number
           title: string
         }
@@ -79,6 +80,7 @@ export type Database = {
           initial_prompt?: string
           questions_text?: string
           reading_time_seconds?: number
+          show_results_to_candidate?: boolean
           time_limit_seconds?: number
           title: string
         }
@@ -92,6 +94,7 @@ export type Database = {
           initial_prompt?: string
           questions_text?: string
           reading_time_seconds?: number
+          show_results_to_candidate?: boolean
           time_limit_seconds?: number
           title?: string
         }
