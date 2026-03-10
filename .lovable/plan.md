@@ -1,44 +1,72 @@
 
 
-# Sync Migrations & Consolidate for Portability
+# Revisi Format Feedback AI — Lebih Terperinci & Terstruktur
 
-## Issue Found
+## Tujuan
 
-**Critical bug**: The "Hapus Audio" feature added previously will fail because there is **no storage RLS policy allowing admins to delete from the `exam-audio` bucket**. The migrations only define INSERT and SELECT policies for that bucket.
+Mengubah output AI dari 2 field teks bebas (`reasoning` + `tips`) menjadi struktur terperinci per-pertanyaan/topik, sehingga ketika 100 feedback dikumpulkan dan di-ingest ke AI, problematika mahasiswa bisa langsung dipetakan dan diprioritaskan.
 
-## Plan
+## Perubahan
 
-### 1. Add missing storage policy (new migration)
+### 1. Update AI Prompt — `supabase/functions/evaluate-exam/index.ts`
 
-```sql
-CREATE POLICY "Admins can delete exam audio"
-ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'exam-audio' AND public.has_role(auth.uid(), 'admin'));
+Ubah JSON schema yang diminta AI dari:
+```json
+{
+  "reasoning": "string",
+  "tips": "string"
+}
 ```
 
-### 2. Create consolidated seed migration
+Menjadi:
+```json
+{
+  "reasoning": "Ringkasan keseluruhan penilaian",
+  "detailedFeedback": [
+    {
+      "topic": "Nama topik/pertanyaan (e.g. 'Anamnesis', 'Diagnosis Banding')",
+      "questionRef": "Referensi pertanyaan terkait (jika ada)",
+      "candidateAnswer": "Ringkasan apa yang dijawab peserta",
+      "expectedAnswer": "Ringkasan jawaban yang benar dari kunci jawaban",
+      "gaps": ["Poin spesifik yang terlewat atau salah"],
+      "misconceptions": ["Kesalahan pemahaman konsep yang terdeteksi"],
+      "score": 0-100,
+      "feedbackText": "Penjelasan detail per topik dalam Bahasa Indonesia"
+    }
+  ],
+  "overallWeaknesses": ["Kelemahan utama secara keseluruhan"],
+  "overallStrengths": ["Kekuatan yang sudah baik"],
+  "prioritizedImprovements": ["Saran perbaikan diurutkan dari yang paling kritis"],
+  "tips": "Ringkasan saran perbaikan"
+}
+```
 
-Create a single file `supabase/migrations/00000000000000_seed.sql` that contains the **complete** database setup in one place — all tables, columns, functions, triggers, RLS policies, storage buckets, and storage policies — as they exist today. This serves as documentation and makes it easy to set up a fresh Supabase instance.
+System prompt diperbarui untuk menginstruksikan AI menganalisis per-topik/pertanyaan, mengidentifikasi gap dan misconception, serta memberikan prioritas improvement.
 
-The existing 8 incremental migrations will remain untouched (they're already applied). The seed file acts as a reference/portable setup script with clear comments for each section:
+### 2. Update Candidate Results UI — `src/components/exam/CandidateResultsList.tsx`
 
-1. **Enums** — `app_role`
-2. **Tables** — profiles, user_roles, clinical_cases, case_assets, exam_sessions, exam_results (with all columns including nim, reading_time_seconds, questions_text, answer_key_text, category, answer_text)
-3. **Functions** — `has_role()`, `handle_new_user()`, `regenerate_station_session()`
-4. **Triggers** — `on_auth_user_created`
-5. **RLS Policies** — all table policies including public read and claim policies
-6. **Storage** — buckets + all storage policies (including the new delete policy)
-7. **Realtime** — `supabase_realtime` publication
+Tambahkan rendering untuk field baru:
+- **Per-topic cards**: Setiap `detailedFeedback` item ditampilkan sebagai card dengan topic, score bar, gap list, dan feedback text
+- **Strengths & Weaknesses**: Section ringkasan kekuatan dan kelemahan
+- **Prioritized Improvements**: Numbered list saran perbaikan
 
-### 3. Update edge function CORS headers
+Backward compatible — jika `detailedFeedback` tidak ada (hasil lama), tampilkan `reasoning` + `tips` seperti sebelumnya.
 
-`register-candidate` has outdated CORS headers (missing the `x-supabase-client-*` headers). Sync it with the pattern used in `evaluate-exam` and `exam-chat`.
+### 3. Update Admin Results UI — `src/components/admin/ResultsViewer.tsx`
 
-## Files Changed
+Tambahkan rendering `detailedFeedback` yang sama di panel admin agar admin juga melihat detail per-topik. Backward compatible.
 
-| File | Action |
-|------|--------|
-| New migration SQL | Add `Admins can delete exam audio` storage policy |
-| `supabase/migrations/00000000000000_seed.sql` | Create consolidated reference migration |
-| `supabase/functions/register-candidate/index.ts` | Update CORS headers |
+### 4. Redeploy Edge Function
+
+Deploy ulang `evaluate-exam` dengan prompt baru.
+
+## File yang Diubah
+
+| File | Perubahan |
+|------|-----------|
+| `supabase/functions/evaluate-exam/index.ts` | Update JSON schema & system prompt |
+| `src/components/exam/CandidateResultsList.tsx` | Render detailed feedback per-topic |
+| `src/components/admin/ResultsViewer.tsx` | Render detailed feedback per-topic |
+
+Tidak perlu migrasi database — `ai_score_report` sudah bertipe `jsonb`.
 
