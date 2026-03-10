@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, AlertTriangle, History } from "lucide-react";
+import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
 
 interface ScoreItem {
