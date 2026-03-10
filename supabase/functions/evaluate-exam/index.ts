@@ -213,6 +213,16 @@ Evaluate each rubric item against the transcript.
   }
 
   prompt += `
+IMPORTANT: You must provide DETAILED per-topic/per-question analysis. Break down your evaluation into logical clinical topics (e.g. Anamnesis, Pemeriksaan Fisik, Diagnosis, Tatalaksana, Edukasi Pasien, etc.) based on the questions and answer key provided.
+
+For EACH topic, you must:
+1. Summarize what the candidate actually said
+2. Compare it against the expected answer
+3. Identify specific gaps (points missed or incomplete)
+4. Identify misconceptions (incorrect understanding or wrong statements)
+5. Give a per-topic score (0-100)
+6. Write detailed feedback text explaining the evaluation
+
 Return a JSON object with these fields:
 {
   "items": [
@@ -223,13 +233,33 @@ Return a JSON object with these fields:
   "score": number,
   "passStatus": "LULUS" | "TIDAK LULUS",
   "hasCriticalFail": boolean,
-  "reasoning": "Detailed explanation in Bahasa Indonesia of why you gave this score. Reference specific parts of the candidate's answer compared to the answer key.",
-  "tips": "Actionable advice in Bahasa Indonesia for the candidate to improve their answer. Be specific about what they missed or could explain better."
+  "reasoning": "Ringkasan keseluruhan penilaian dalam Bahasa Indonesia. Jelaskan mengapa nilai ini diberikan dengan merujuk bagian spesifik dari jawaban kandidat dibandingkan kunci jawaban.",
+  "detailedFeedback": [
+    {
+      "topic": "Nama topik klinis (e.g. 'Anamnesis', 'Diagnosis Banding', 'Tatalaksana')",
+      "questionRef": "Referensi pertanyaan terkait jika ada (e.g. 'Pertanyaan 1')",
+      "candidateAnswer": "Ringkasan singkat apa yang dijawab peserta untuk topik ini",
+      "expectedAnswer": "Ringkasan singkat jawaban yang benar dari kunci jawaban untuk topik ini",
+      "gaps": ["Poin spesifik yang terlewat atau tidak lengkap"],
+      "misconceptions": ["Kesalahan pemahaman konsep yang terdeteksi, jika ada"],
+      "score": number (0-100 per topik),
+      "feedbackText": "Penjelasan detail evaluasi per topik dalam Bahasa Indonesia. Jelaskan apa yang benar, apa yang salah, dan bagaimana seharusnya."
+    }
+  ],
+  "overallStrengths": ["Kekuatan utama kandidat yang sudah baik (dalam Bahasa Indonesia)"],
+  "overallWeaknesses": ["Kelemahan utama kandidat secara keseluruhan (dalam Bahasa Indonesia)"],
+  "prioritizedImprovements": ["Saran perbaikan diurutkan dari yang paling kritis dan mendesak (dalam Bahasa Indonesia)"],
+  "tips": "Ringkasan saran perbaikan umum dalam Bahasa Indonesia"
 }
 
+RULES:
 - "score" is a 0-100 percentage reflecting overall answer quality
 - "passStatus" must be "LULUS" if score >= 68 and no critical fails, otherwise "TIDAK LULUS"
-- "reasoning" and "tips" must be in Bahasa Indonesia
+- ALL text fields (reasoning, tips, feedbackText, gaps, misconceptions, strengths, weaknesses, improvements) MUST be in Bahasa Indonesia
+- "detailedFeedback" must have at least one entry per major clinical topic covered in the questions/answer key
+- Be specific and concrete — avoid vague statements like "kurang lengkap". Instead say exactly WHAT was missing.
+- "gaps" should list the SPECIFIC points from the answer key that the candidate missed
+- "misconceptions" should only include things the candidate said that are factually WRONG, not just incomplete
 
 Only return valid JSON, no other text.`;
 
