@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, Trash2, Volume2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Json } from "@/integrations/supabase/types";
+import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 
 interface ScoreItem {
   item: string;
@@ -27,6 +28,10 @@ interface ScoreReport {
   hasCriticalFail?: boolean;
   reasoning?: string;
   tips?: string;
+  detailedFeedback?: any[];
+  overallStrengths?: string[];
+  overallWeaknesses?: string[];
+  prioritizedImprovements?: string[];
 }
 
 const ResultsViewer = () => {
@@ -330,23 +335,14 @@ const ResultsViewer = () => {
                               )}
                             </div>
 
-                            {parsed.reasoning && (
-                              <div>
-                                <h4 className="text-sm font-semibold mb-1">💡 Alasan Penilaian (Reasoning)</h4>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">
-                                  {parsed.reasoning}
-                                </p>
-                              </div>
-                            )}
-
-                            {parsed.tips && (
-                              <div>
-                                <h4 className="text-sm font-semibold mb-1">📝 Tips Perbaikan</h4>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">
-                                  {parsed.tips}
-                                </p>
-                              </div>
-                            )}
+                            <DetailedFeedbackDisplay
+                              detailedFeedback={parsed.detailedFeedback}
+                              overallStrengths={parsed.overallStrengths}
+                              overallWeaknesses={parsed.overallWeaknesses}
+                              prioritizedImprovements={parsed.prioritizedImprovements}
+                              reasoning={parsed.reasoning}
+                              tips={parsed.tips}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>

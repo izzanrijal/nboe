@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, AlertTriangle, History } from "lucide-react";
+import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
 
 interface ScoreItem {
@@ -25,6 +26,10 @@ interface ScoreReport {
   hasCriticalFail?: boolean;
   reasoning?: string;
   tips?: string;
+  detailedFeedback?: any[];
+  overallStrengths?: string[];
+  overallWeaknesses?: string[];
+  prioritizedImprovements?: string[];
 }
 
 const parseScoreReport = (report: Json | null): ScoreReport => {
@@ -190,19 +195,14 @@ const CandidateResultsList = () => {
                     </div>
                   )}
 
-                  {parsed.reasoning && (
-                    <div>
-                      <h4 className="text-sm font-semibold mb-1">💡 Alasan Penilaian</h4>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">{parsed.reasoning}</p>
-                    </div>
-                  )}
-
-                  {parsed.tips && (
-                    <div>
-                      <h4 className="text-sm font-semibold mb-1">📝 Tips Perbaikan</h4>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted p-3">{parsed.tips}</p>
-                    </div>
-                  )}
+                  <DetailedFeedbackDisplay
+                    detailedFeedback={parsed.detailedFeedback}
+                    overallStrengths={parsed.overallStrengths}
+                    overallWeaknesses={parsed.overallWeaknesses}
+                    prioritizedImprovements={parsed.prioritizedImprovements}
+                    reasoning={parsed.reasoning}
+                    tips={parsed.tips}
+                  />
 
                   {!parsed.items.length && parsed.score == null && (
                     <p className="text-sm text-muted-foreground">Belum ada hasil evaluasi AI.</p>
