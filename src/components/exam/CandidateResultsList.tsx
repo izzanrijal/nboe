@@ -26,6 +26,10 @@ interface ScoreReport {
   hasCriticalFail?: boolean;
   reasoning?: string;
   tips?: string;
+  detailedFeedback?: any[];
+  overallStrengths?: string[];
+  overallWeaknesses?: string[];
+  prioritizedImprovements?: string[];
 }
 
 const parseScoreReport = (report: Json | null): ScoreReport => {
