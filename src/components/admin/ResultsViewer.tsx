@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, Trash2, Volume2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Json } from "@/integrations/supabase/types";
+import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 
 interface ScoreItem {
   item: string;
