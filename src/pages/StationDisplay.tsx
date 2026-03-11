@@ -343,7 +343,4 @@ const StationDisplay = () => {
   );
 };
 
-// Need Badge import
-import { Badge } from "@/components/ui/badge";
-
 export default StationDisplay;
