@@ -1,44 +1,105 @@
 
 
-# Sync Migrations & Consolidate for Portability
+# Rangkaian Ujian Berturut-turut (Exam Sequence)
 
-## Issue Found
+## Konsep
 
-**Critical bug**: The "Hapus Audio" feature added previously will fail because there is **no storage RLS policy allowing admins to delete from the `exam-audio` bucket**. The migrations only define INSERT and SELECT policies for that bucket.
+Admin memilih beberapa case sekaligus dan menentukan urutannya saat deploy station. Satu URL station menjalankan semua ujian secara berurutan. Setelah peserta selesai 1 ujian, PC menampilkan QR baru untuk ujian berikutnya (case berbeda). Peserta mulai dari gatekeeper lagi tiap ujian.
 
-## Plan
+## Database Changes
 
-### 1. Add missing storage policy (new migration)
+### New table: `exam_sequence_items`
+Menyimpan urutan case dalam satu station deployment.
 
 ```sql
-CREATE POLICY "Admins can delete exam audio"
-ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'exam-audio' AND public.has_role(auth.uid(), 'admin'));
+CREATE TABLE public.exam_sequence_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  station_token text NOT NULL,        -- shared token for the sequence
+  case_id uuid NOT NULL,
+  sequence_order integer NOT NULL,     -- 1, 2, 3...
+  session_id uuid,                     -- filled when session is created
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.exam_sequence_items ENABLE ROW LEVEL SECURITY;
+
+-- Admin full access
+CREATE POLICY "Admins manage sequence items" ON public.exam_sequence_items
+FOR ALL TO public USING (has_role(auth.uid(), 'admin'));
+
+-- Public read (station display needs it without auth)
+CREATE POLICY "Public read sequence items" ON public.exam_sequence_items
+FOR SELECT TO anon, authenticated USING (true);
 ```
 
-### 2. Create consolidated seed migration
+### New DB function: `advance_station_sequence`
+Called by StationDisplay after exam completes. Finds the next case in the sequence, creates a new session for it, returns the new session data.
 
-Create a single file `supabase/migrations/00000000000000_seed.sql` that contains the **complete** database setup in one place — all tables, columns, functions, triggers, RLS policies, storage buckets, and storage policies — as they exist today. This serves as documentation and makes it easy to set up a fresh Supabase instance.
+```sql
+CREATE OR REPLACE FUNCTION public.advance_station_sequence(
+  _station_token text,
+  _completed_sequence_order integer
+)
+RETURNS TABLE(id uuid, case_id uuid, status text, session_start_time timestamptz, sequence_order integer, is_last boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $$
+DECLARE
+  _next_item exam_sequence_items%ROWTYPE;
+  _new_session_id uuid;
+  _total integer;
+BEGIN
+  -- Find next item in sequence
+  SELECT * INTO _next_item FROM exam_sequence_items
+  WHERE station_token = _station_token AND sequence_order = _completed_sequence_order + 1;
 
-The existing 8 incremental migrations will remain untouched (they're already applied). The seed file acts as a reference/portable setup script with clear comments for each section:
+  -- Count total
+  SELECT count(*) INTO _total FROM exam_sequence_items WHERE station_token = _station_token;
 
-1. **Enums** — `app_role`
-2. **Tables** — profiles, user_roles, clinical_cases, case_assets, exam_sessions, exam_results (with all columns including nim, reading_time_seconds, questions_text, answer_key_text, category, answer_text)
-3. **Functions** — `has_role()`, `handle_new_user()`, `regenerate_station_session()`
-4. **Triggers** — `on_auth_user_created`
-5. **RLS Policies** — all table policies including public read and claim policies
-6. **Storage** — buckets + all storage policies (including the new delete policy)
-7. **Realtime** — `supabase_realtime` publication
+  IF _next_item IS NULL THEN
+    -- No more exams, sequence complete
+    RETURN;
+  END IF;
 
-### 3. Update edge function CORS headers
+  -- Create new session
+  INSERT INTO exam_sessions (case_id, station_token, status)
+  VALUES (_next_item.case_id, _station_token, 'waiting')
+  RETURNING exam_sessions.id INTO _new_session_id;
 
-`register-candidate` has outdated CORS headers (missing the `x-supabase-client-*` headers). Sync it with the pattern used in `evaluate-exam` and `exam-chat`.
+  -- Link session to sequence item
+  UPDATE exam_sequence_items SET session_id = _new_session_id WHERE id = _next_item.id;
+
+  RETURN QUERY SELECT _new_session_id, _next_item.case_id, 'waiting'::text, NULL::timestamptz, _next_item.sequence_order, (_next_item.sequence_order >= _total);
+END;
+$$;
+```
+
+## Frontend Changes
+
+### 1. SessionManager — Multi-select deploy UI
+- Replace single `Select` with a multi-select list (checkboxes + drag-to-reorder or numbered list)
+- "Deploy Station" creates:
+  - First session (`exam_sessions` row with token)
+  - All `exam_sequence_items` rows (one per case, ordered)
+  - Links first item's `session_id` to the created session
+- Single-case deploy still works (just 1 item in sequence)
+
+### 2. StationDisplay — Sequence awareness
+- After `completed_screen`, instead of always calling `regenerate_station_session` (same case), call `advance_station_sequence` to get the next case
+- If no next case returned → show "Semua Ujian Selesai" final screen
+- If next case exists → load new session, show QR
+- Show progress indicator: "Ujian 2/4"
+
+### 3. ExamCompleted — Show "next exam" info
+- When session is part of a sequence, show "Scan QR berikutnya di layar PC untuk ujian selanjutnya" instead of "You may close this window"
+- Query `exam_sequence_items` to check if there's a next item
 
 ## Files Changed
 
 | File | Action |
 |------|--------|
-| New migration SQL | Add `Admins can delete exam audio` storage policy |
-| `supabase/migrations/00000000000000_seed.sql` | Create consolidated reference migration |
-| `supabase/functions/register-candidate/index.ts` | Update CORS headers |
+| Migration SQL | Create `exam_sequence_items` table + `advance_station_sequence` function |
+| `src/components/admin/SessionManager.tsx` | Multi-select cases UI + sequence deploy logic |
+| `src/pages/StationDisplay.tsx` | Sequence-aware regeneration + progress indicator + final screen |
+| `src/pages/ExamCompleted.tsx` | Conditional message for sequence exams |
+| `src/components/station/QRDisplay.tsx` | Add optional progress prop ("Ujian 2/4") |
 
