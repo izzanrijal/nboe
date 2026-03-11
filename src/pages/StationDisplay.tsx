@@ -287,6 +287,7 @@ const StationDisplay = () => {
     return (
       <QRDisplay
         sessionId={session.id}
+        stationToken={currentToken}
         sequenceLabel={sequenceInfo && sequenceInfo.total > 1 ? `Ujian ${sequenceInfo.currentOrder} / ${sequenceInfo.total}` : undefined}
       />
     );
