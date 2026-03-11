@@ -1,12 +1,27 @@
 
-# Security Hardening — Completed
 
-All 7 security vulnerabilities have been patched:
+# Tambah Logout & Tutup Kamera di Halaman Exam
 
-1. ✅ **Race Condition** → `claim_exam_session` atomic RPC
-2. ✅ **Client-side Timer** → `start_exam_timer` server-side RPC
-3. ✅ **Anti-cheat** → Added `blur` + `debugger` timing detection
-4. ✅ **Audio validation** → Retry logic + warning on missing audio
-5. ✅ **Duplicate bypass** → Atomic check in `claim_exam_session` + DB unique constraint
-6. ✅ **Answer key exposure** → `case_answer_keys` admin-only table
-7. ✅ **Chat persistence** → `chat_messages` table with per-session logging
+## Perubahan
+
+### 1. `src/pages/ExamEntry.tsx` — Tambah tombol Logout
+- Tambah header bar dengan nama user dan tombol Logout (icon `LogOut`)
+- Logout memanggil `signOut()` dari `useAuth()`, lalu redirect ke `/login`
+
+### 2. `src/components/exam/QRScanner.tsx` — Tambah tombol tutup kamera
+- Setelah kamera aktif (`started === true`), tampilkan tombol "Tutup Kamera"
+- Klik → panggil `scanner.stop()`, set `started = false`
+- Tombol "Buka Kamera" muncul kembali agar user bisa buka ulang
+
+### 3. `src/components/exam/AudioGatekeeper.tsx` — Tidak perlu tombol tutup kamera
+- Gatekeeper hanya meminta izin mic, bukan kamera. Kamera ada di QRScanner.
+- Tapi tambahkan link "Kembali" ke `/exam` agar peserta bisa mundur sebelum mulai ujian.
+
+## File yang Diubah
+
+| File | Perubahan |
+|------|-----------|
+| `src/pages/ExamEntry.tsx` | Header dengan logout button |
+| `src/components/exam/QRScanner.tsx` | Tombol tutup kamera saat aktif |
+| `src/components/exam/AudioGatekeeper.tsx` | Link kembali ke /exam |
+
