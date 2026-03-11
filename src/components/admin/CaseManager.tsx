@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Upload } from "lucide-react";
 import CaseForm from "./CaseForm";
@@ -33,12 +33,31 @@ const CaseManager = () => {
   const { data: cases = [], isLoading } = useQuery({
     queryKey: ["clinical_cases"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch cases + their answer keys from the secure table
+      const { data: casesData, error } = await supabase
         .from("clinical_cases")
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as ClinicalCase[];
+
+      // Fetch answer keys (admin-only table)
+      const { data: answerKeys } = await supabase
+        .from("case_answer_keys")
+        .select("case_id, answer_key_text, checklist_rubric");
+
+      const akMap = new Map(
+        (answerKeys || []).map((ak: any) => [ak.case_id, ak])
+      );
+
+      // Merge: prefer case_answer_keys data over clinical_cases columns
+      return (casesData || []).map((c: any) => {
+        const ak = akMap.get(c.id);
+        return {
+          ...c,
+          answer_key_text: ak?.answer_key_text ?? c.answer_key_text,
+          checklist_rubric: ak?.checklist_rubric ?? c.checklist_rubric,
+        } as ClinicalCase;
+      });
     },
   });
 
@@ -99,7 +118,7 @@ const CaseManager = () => {
                   <TableCell className="font-medium">{c.title}</TableCell>
                   <TableCell>{c.exam_mode === "oral_board" ? "Oral Board" : "Panel Exam"}</TableCell>
                   <TableCell>{c.time_limit_seconds}</TableCell>
-                  <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : 0}</TableCell>
+                  <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : (c.checklist_rubric?.items?.length ?? 0)}</TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
                       <Upload className="h-4 w-4" />

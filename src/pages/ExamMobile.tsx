@@ -87,16 +87,17 @@ const ExamMobile = () => {
 
   const handleReadingComplete = useCallback(
     async (info: { caseTitle: string; casePrompt: string; questionsText: string; timeLimitSeconds: number }) => {
-      const now = new Date().toISOString();
+      let now = new Date().toISOString();
 
-      // Update session_start_time to NOW (exam timer starts after reading)
+      // Fix #2: Use server-side timer start to prevent clock manipulation
       if (sessionId) {
-        const { error } = await supabase
-          .from("exam_sessions")
-          .update({ session_start_time: now })
-          .eq("id", sessionId);
+        const { data, error } = await supabase.rpc('start_exam_timer', {
+          _session_id: sessionId,
+        });
         if (error) {
-          console.error("Failed to update session_start_time:", error);
+          console.error("Failed to start exam timer:", error);
+        } else if (data) {
+          now = data as string;
         }
       }
 
