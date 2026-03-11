@@ -137,7 +137,7 @@ const SessionManager = () => {
 
           <Button
             onClick={() => deployMutation.mutate()}
-            disabled={selectedCases.length === 0 || deployMutation.isPending}
+            disabled={selectedCases.length === 0 || deployMutation.isPending || pcCount < 1}
             className="w-full sm:w-auto"
           >
             <Rocket className="h-4 w-4 mr-2" />
