@@ -1,14 +1,21 @@
 import { QRCodeSVG } from "qrcode.react";
+import { Badge } from "@/components/ui/badge";
 
 interface QRDisplayProps {
   sessionId: string;
+  sequenceLabel?: string;
 }
 
-const QRDisplay = ({ sessionId }: QRDisplayProps) => {
+const QRDisplay = ({ sessionId, sequenceLabel }: QRDisplayProps) => {
   const url = `${window.location.origin}/exam/${sessionId}`;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-8 p-8">
+      {sequenceLabel && (
+        <Badge variant="secondary" className="text-lg px-4 py-2">
+          {sequenceLabel}
+        </Badge>
+      )}
       <h1 className="text-4xl font-bold text-foreground tracking-tight">
         Scan to Begin Exam
       </h1>

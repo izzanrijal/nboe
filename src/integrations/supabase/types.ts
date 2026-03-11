@@ -145,6 +145,48 @@ export type Database = {
           },
         ]
       }
+      exam_sequence_items: {
+        Row: {
+          case_id: string
+          created_at: string
+          id: string
+          sequence_order: number
+          session_id: string | null
+          station_token: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          id?: string
+          sequence_order: number
+          session_id?: string | null
+          station_token: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          id?: string
+          sequence_order?: number
+          session_id?: string | null
+          station_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exam_sequence_items_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exam_sequence_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "exam_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exam_sessions: {
         Row: {
           case_id: string
@@ -240,6 +282,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advance_station_sequence: {
+        Args: { _completed_sequence_order: number; _station_token: string }
+        Returns: {
+          next_case_id: string
+          next_id: string
+          next_is_last: boolean
+          next_sequence_order: number
+          next_session_start_time: string
+          next_status: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
