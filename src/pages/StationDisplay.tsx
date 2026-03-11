@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { matchesKeywords } from "@/lib/keywordMatcher";
+import { generateBookingCode } from "@/lib/bookingCode";
 import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
@@ -136,8 +137,7 @@ const StationDisplay = () => {
       }
 
       // Not a sequence — regenerate same case (legacy behavior)
-      const { nanoid } = await import("nanoid");
-      const newToken = nanoid(10);
+      const newToken = generateBookingCode();
       const { data, error } = await (supabase.rpc as any)('regenerate_station_session', {
         _case_id: caseId,
         _new_token: newToken,
@@ -287,6 +287,7 @@ const StationDisplay = () => {
     return (
       <QRDisplay
         sessionId={session.id}
+        stationToken={currentToken}
         sequenceLabel={sequenceInfo && sequenceInfo.total > 1 ? `Ujian ${sequenceInfo.currentOrder} / ${sequenceInfo.total}` : undefined}
       />
     );

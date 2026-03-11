@@ -4,13 +4,19 @@ import { Badge } from "@/components/ui/badge";
 interface QRDisplayProps {
   sessionId: string;
   sequenceLabel?: string;
+  stationToken?: string;
 }
 
-const QRDisplay = ({ sessionId, sequenceLabel }: QRDisplayProps) => {
+const QRDisplay = ({ sessionId, sequenceLabel, stationToken }: QRDisplayProps) => {
   const url = `${window.location.origin}/exam/${sessionId}`;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-8 p-8">
+      {stationToken && (
+        <div className="font-mono text-5xl font-bold tracking-[0.3em] text-foreground">
+          {stationToken}
+        </div>
+      )}
       {sequenceLabel && (
         <Badge variant="secondary" className="text-lg px-4 py-2">
           {sequenceLabel}
