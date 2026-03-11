@@ -377,6 +377,7 @@ export type Database = {
           status: string
         }[]
       }
+      start_exam_timer: { Args: { _session_id: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "candidate"
