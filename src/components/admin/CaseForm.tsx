@@ -61,24 +61,47 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const casePayload = {
         title,
         exam_mode: examMode,
         initial_prompt: initialPrompt,
         time_limit_seconds: timeLimitSeconds,
         reading_time_seconds: readingTimeSeconds,
         questions_text: questionsText,
-        answer_key_text: answerKeyText,
         show_results_to_candidate: showResultsToCandidate,
+        // Keep answer_key_text and checklist_rubric on clinical_cases for backward compat
+        // but the authoritative source is now case_answer_keys
+        answer_key_text: answerKeyText,
         checklist_rubric: rubricData as any,
       };
 
+      let caseId = existingCase?.id;
+
       if (existingCase) {
-        const { error } = await supabase.from("clinical_cases").update(payload).eq("id", existingCase.id);
+        const { error } = await supabase.from("clinical_cases").update(casePayload).eq("id", existingCase.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("clinical_cases").insert(payload);
+        const { data, error } = await supabase.from("clinical_cases").insert(casePayload).select("id").single();
         if (error) throw error;
+        caseId = data.id;
+      }
+
+      // Upsert into case_answer_keys (admin-only table)
+      if (caseId) {
+        const { error: akError } = await supabase
+          .from("case_answer_keys")
+          .upsert(
+            {
+              case_id: caseId,
+              answer_key_text: answerKeyText,
+              checklist_rubric: rubricData as any,
+            },
+            { onConflict: "case_id" }
+          );
+        if (akError) {
+          console.error("Failed to save answer keys:", akError);
+          // Don't throw — the case itself was saved
+        }
       }
     },
     onSuccess: () => {
@@ -138,7 +161,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
       <div className="space-y-2">
         <Label htmlFor="answerKey">Kunci Jawaban (Answer Key)</Label>
         <p className="text-xs text-muted-foreground">
-          Jawaban lengkap dan benar sebagai referensi AI untuk memberikan nilai.
+          Jawaban lengkap dan benar sebagai referensi AI untuk memberikan nilai. Data ini hanya dapat diakses oleh admin.
         </p>
         <Textarea
           id="answerKey"

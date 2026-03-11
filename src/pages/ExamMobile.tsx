@@ -44,68 +44,38 @@ const ExamMobile = () => {
       setValidating(true);
 
       try {
-      // Check for duplicate
-      const { data: currentSession } = await supabase
-        .from("exam_sessions")
-        .select("case_id")
-        .eq("id", sessionId)
-        .single();
+        // Use atomic claim RPC — handles race condition + duplicate check
+        const { data, error } = await supabase.rpc('claim_exam_session', {
+          _session_id: sessionId,
+          _candidate_id: user.id,
+        });
 
-      if (currentSession) {
-        const { data: sameCaseSessions } = await supabase
-          .from("exam_sessions")
-          .select("id")
-          .eq("case_id", currentSession.case_id);
-
-        if (sameCaseSessions && sameCaseSessions.length > 0) {
-          const sessionIds = sameCaseSessions.map((s) => s.id);
-
-          // Check 1: existing exam_results
-          const { data: existingResults } = await supabase
-            .from("exam_results")
-            .select("id")
-            .eq("candidate_id", user.id)
-            .in("session_id", sessionIds)
-            .limit(1);
-
-          if (existingResults && existingResults.length > 0) {
-            setStep("duplicate_warning");
-            return;
-          }
-
-          // Check 2: candidate was assigned to a completed/force_closed session (fallback)
-          const { data: completedSessions } = await supabase
-            .from("exam_sessions")
-            .select("id")
-            .eq("current_candidate_id", user.id)
-            .eq("case_id", currentSession.case_id)
-            .in("status", ["completed", "force_closed"])
-            .limit(1);
-
-          if (completedSessions && completedSessions.length > 0) {
-            setStep("duplicate_warning");
-            return;
-          }
+        if (error) {
+          console.error("Claim RPC error:", error);
+          toast.error("Gagal memulai sesi. Silakan coba lagi.");
+          setValidating(false);
+          return;
         }
-      }
 
-      // Claim session — do NOT set session_start_time yet (timer starts after reading)
-      const { error } = await supabase
-        .from("exam_sessions")
-        .update({
-          status: "active",
-          current_candidate_id: user.id,
-        })
-        .eq("id", sessionId);
+        const result = data as { success: boolean; reason?: string };
 
-      if (error) {
-        toast.error("Gagal memulai sesi. Sesi mungkin sudah digunakan.");
-        setValidating(false);
-        return;
-      }
+        if (!result.success) {
+          if (result.reason === 'duplicate') {
+            setStep("duplicate_warning");
+            return;
+          }
+          if (result.reason === 'already_claimed') {
+            toast.error("Sesi sudah digunakan oleh peserta lain.");
+            setValidating(false);
+            return;
+          }
+          toast.error("Gagal memulai sesi.");
+          setValidating(false);
+          return;
+        }
 
-      // Go to reading phase
-      setStep("reading");
+        // Go to reading phase
+        setStep("reading");
       } catch (err) {
         console.error("Error during session setup:", err);
         toast.error("Terjadi kesalahan. Silakan coba lagi.");
