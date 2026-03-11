@@ -137,8 +137,7 @@ const StationDisplay = () => {
       }
 
       // Not a sequence — regenerate same case (legacy behavior)
-      const { nanoid } = await import("nanoid");
-      const newToken = nanoid(10);
+      const newToken = generateBookingCode();
       const { data, error } = await (supabase.rpc as any)('regenerate_station_session', {
         _case_id: caseId,
         _new_token: newToken,
