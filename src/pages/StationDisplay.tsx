@@ -6,6 +6,7 @@ import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
 import CountdownTimer from "@/components/station/CountdownTimer";
+import { Badge } from "@/components/ui/badge";
 
 type StationState = "loading" | "waiting" | "active" | "completed_screen" | "sequence_complete";
 
