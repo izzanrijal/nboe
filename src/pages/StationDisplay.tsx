@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { matchesKeywords } from "@/lib/keywordMatcher";
+import { generateBookingCode } from "@/lib/bookingCode";
 import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
