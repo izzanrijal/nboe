@@ -8,6 +8,7 @@ interface AudioGatekeeperProps {
 }
 
 const AudioGatekeeper = ({ onReady }: AudioGatekeeperProps) => {
+  const navigate = useNavigate();
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
