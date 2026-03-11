@@ -1,12 +1,14 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Mic, Loader2 } from "lucide-react";
+import { Mic, Loader2, ArrowLeft } from "lucide-react";
 
 interface AudioGatekeeperProps {
   onReady: (stream: MediaStream) => void;
 }
 
 const AudioGatekeeper = ({ onReady }: AudioGatekeeperProps) => {
+  const navigate = useNavigate();
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,11 @@ const AudioGatekeeper = ({ onReady }: AudioGatekeeperProps) => {
         ) : (
           "Mulai Ujian"
         )}
+      </Button>
+
+      <Button variant="ghost" size="sm" onClick={() => navigate("/exam")}>
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        Kembali
       </Button>
     </div>
   );
