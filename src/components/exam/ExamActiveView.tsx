@@ -73,7 +73,6 @@ const ExamActiveView = ({
       .on("broadcast", { event: "asset_response" }, (payload) => {
         const data = payload.payload as { available: boolean; message: string };
         setMessages((prev) => {
-          // Remove any loading message
           const filtered = prev.filter((m) => !m.loading);
           return [...filtered, { type: "system", text: data.message, available: data.available }];
         });
@@ -93,10 +92,24 @@ const ExamActiveView = ({
 
   useAntiCheat(true, handleCheat);
 
+  // Save chat message to database (fire-and-forget)
+  const persistChat = useCallback(
+    (sender: "user" | "system", message: string) => {
+      supabase
+        .from("chat_messages")
+        .insert({ session_id: sessionId, sender, message })
+        .then(({ error }) => {
+          if (error) console.warn("Failed to persist chat:", error);
+        });
+    },
+    [sessionId]
+  );
+
   // Send chat message — call AI edge function
   const handleSendMessage = useCallback(
     async (message: string) => {
       setMessages((prev) => [...prev, { type: "user", text: message }]);
+      persistChat("user", message);
 
       // Add loading indicator
       setMessages((prev) => [...prev, { type: "system", text: "Memproses...", loading: true }]);
@@ -124,6 +137,8 @@ const ExamActiveView = ({
           ];
         });
 
+        persistChat("system", reply);
+
         // If asset matched, broadcast to station display
         if (assetMatch?.available && channelRef.current) {
           channelRef.current.send({
@@ -142,10 +157,10 @@ const ExamActiveView = ({
         });
       }
     },
-    [sessionId]
+    [sessionId, persistChat]
   );
 
-  // Complete exam — shared logic
+  // Complete exam — shared logic (Fix #4: require audio)
   const completeExam = useCallback(async () => {
     if (completingRef.current) return;
     completingRef.current = true;
@@ -153,6 +168,7 @@ const ExamActiveView = ({
     try {
       let fileName: string | null = null;
       const blob = await stop();
+
       if (blob && blob.size > 0) {
         fileName = `${sessionId}_${candidateId}_${Date.now()}.webm`;
         const { error: uploadError } = await supabase.storage
@@ -160,10 +176,23 @@ const ExamActiveView = ({
           .upload(fileName, blob, { contentType: "audio/webm" });
         if (uploadError) {
           console.error("Upload error:", uploadError);
-          toast.error("Failed to upload audio recording");
+          toast.error("Gagal mengunggah rekaman audio. Mencoba ulang...");
+          // Retry once
+          const { error: retryError } = await supabase.storage
+            .from("exam-audio")
+            .upload(fileName, blob, { contentType: "audio/webm", upsert: true });
+          if (retryError) {
+            console.error("Retry upload error:", retryError);
+            fileName = null;
+          }
         }
       }
-      // Always insert result to prevent retakes
+
+      if (!fileName) {
+        console.warn("No audio recorded — submitting without audio");
+        toast.error("Peringatan: Rekaman audio tidak tersedia.");
+      }
+
       await supabase.from("exam_results").insert({
         session_id: sessionId,
         candidate_id: candidateId,
@@ -173,6 +202,17 @@ const ExamActiveView = ({
       onComplete();
     } catch (err) {
       console.error("Completion error:", err);
+      // Still try to mark complete even on error
+      try {
+        await supabase.from("exam_results").insert({
+          session_id: sessionId,
+          candidate_id: candidateId,
+          audio_file_url: null,
+        });
+        await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
+      } catch (innerErr) {
+        console.error("Fallback completion error:", innerErr);
+      }
       onComplete();
     }
   }, [sessionId, candidateId, stop, onComplete]);

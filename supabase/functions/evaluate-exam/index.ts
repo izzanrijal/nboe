@@ -57,11 +57,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2. Fetch session → case (including answer_key_text)
-    const { data: session } = await supabase
-      .from("exam_sessions").select("case_id").eq("id", result.session_id).single();
-    const { data: clinicalCase } = await supabase
-      .from("clinical_cases").select("checklist_rubric, title, questions_text, answer_key_text").eq("id", session!.case_id).single();
+    // Fix #2: Server-side timer enforcement
+    const { data: sessionData } = await supabase
+      .from("exam_sessions").select("case_id, session_start_time").eq("id", result.session_id).single();
+
+    if (!sessionData) {
+      return new Response(JSON.stringify({ error: "Session not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 2. Fetch case data (non-sensitive) + answer keys from secure table
+    const [caseResult, answerKeyResult] = await Promise.all([
+      supabase.from("clinical_cases").select("title, questions_text, time_limit_seconds").eq("id", sessionData.case_id).single(),
+      supabase.from("case_answer_keys").select("answer_key_text, checklist_rubric").eq("case_id", sessionData.case_id).single(),
+    ]);
+
+    const clinicalCase = caseResult.data;
+    const answerKeys = answerKeyResult.data;
 
     // 3. Transcribe audio via OpenAI Whisper
     let transcript = result.transcript;
@@ -93,8 +106,8 @@ Deno.serve(async (req) => {
       transcript = whisperData.text;
     }
 
-    // 4. Parse rubric
-    const rawRubric = clinicalCase?.checklist_rubric;
+    // 4. Parse rubric from case_answer_keys
+    const rawRubric = answerKeys?.checklist_rubric;
     let rubricData: RubricData;
     if (rawRubric && typeof rawRubric === "object" && !Array.isArray(rawRubric) && "enabled" in rawRubric) {
       rubricData = rawRubric as RubricData;
@@ -107,7 +120,7 @@ Deno.serve(async (req) => {
       rubricData = { enabled: false, items: [] };
     }
 
-    const answerKey = clinicalCase?.answer_key_text || "";
+    const answerKey = answerKeys?.answer_key_text || "";
     const questions = clinicalCase?.questions_text || "";
 
     // 5. Build system prompt with answer key grading
