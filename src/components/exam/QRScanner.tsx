@@ -15,6 +15,14 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
   const [navigating, setNavigating] = useState(false);
   const scannedRef = useRef(false);
 
+  const stopScanner = async () => {
+    try {
+      await scannerRef.current?.stop();
+    } catch {}
+    scannerRef.current = null;
+    setStarted(false);
+  };
+
   const startScanner = async () => {
     try {
       setError(null);
@@ -33,7 +41,6 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
             try {
               await scanner.stop();
             } catch {}
-            // Small delay to let DOM clean up
             setTimeout(() => onScan(match[1]), 100);
           }
         },
