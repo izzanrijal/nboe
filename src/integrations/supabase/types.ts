@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      case_answer_keys: {
+        Row: {
+          answer_key_text: string
+          case_id: string
+          checklist_rubric: Json
+          created_at: string
+          id: string
+        }
+        Insert: {
+          answer_key_text?: string
+          case_id: string
+          checklist_rubric?: Json
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          answer_key_text?: string
+          case_id?: string
+          checklist_rubric?: Json
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_answer_keys_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       case_assets: {
         Row: {
           answer_text: string
@@ -51,6 +83,38 @@ export type Database = {
             columns: ["case_id"]
             isOneToOne: false
             referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          sender: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          sender?: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          sender?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "exam_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -292,6 +356,10 @@ export type Database = {
           next_session_start_time: string
           next_status: string
         }[]
+      }
+      claim_exam_session: {
+        Args: { _candidate_id: string; _session_id: string }
+        Returns: Json
       }
       has_role: {
         Args: {
