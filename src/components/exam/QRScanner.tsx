@@ -81,9 +81,13 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
         style={{ minHeight: started ? 300 : 0 }}
       />
 
-      {!started && (
+      {!started ? (
         <Button onClick={startScanner} size="lg">
           Buka Kamera
+        </Button>
+      ) : (
+        <Button variant="outline" onClick={stopScanner}>
+          Tutup Kamera
         </Button>
       )}
 

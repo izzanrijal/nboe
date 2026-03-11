@@ -48,6 +48,11 @@ const AudioGatekeeper = ({ onReady }: AudioGatekeeperProps) => {
           "Mulai Ujian"
         )}
       </Button>
+
+      <Button variant="ghost" size="sm" onClick={() => navigate("/exam")}>
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        Kembali
+      </Button>
     </div>
   );
 };
