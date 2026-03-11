@@ -96,21 +96,48 @@ const SessionManager = () => {
               <div className="flex items-center gap-2">
                 <Monitor className="h-4 w-4 text-muted-foreground" />
                 <label className="text-sm font-medium">Jumlah PC/Monitor:</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={pcCount}
-                  onChange={(e) => setPcCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
-                  className="w-20"
-                />
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setPcCount((v) => Math.max(1, v - 1))}
+                    disabled={pcCount <= 1}
+                  >
+                    <span className="text-lg leading-none">−</span>
+                  </Button>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={pcCount || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") { setPcCount(0); return; }
+                      const num = parseInt(val);
+                      if (!isNaN(num)) setPcCount(Math.min(50, num));
+                    }}
+                    className="w-16 text-center"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setPcCount((v) => Math.min(50, v + 1))}
+                    disabled={pcCount >= 50}
+                  >
+                    <span className="text-lg leading-none">+</span>
+                  </Button>
+                </div>
               </div>
             </div>
           )}
 
           <Button
             onClick={() => deployMutation.mutate()}
-            disabled={selectedCases.length === 0 || deployMutation.isPending}
+            disabled={selectedCases.length === 0 || deployMutation.isPending || pcCount < 1}
             className="w-full sm:w-auto"
           >
             <Rocket className="h-4 w-4 mr-2" />
