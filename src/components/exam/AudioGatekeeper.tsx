@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Mic, Loader2 } from "lucide-react";
+import { Mic, Loader2, ArrowLeft } from "lucide-react";
 
 interface AudioGatekeeperProps {
   onReady: (stream: MediaStream) => void;
