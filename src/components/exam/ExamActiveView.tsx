@@ -84,13 +84,6 @@ const ExamActiveView = ({
     };
   }, [sessionId, audioStream, start]);
 
-  // Anti-cheat
-  const handleCheat = useCallback(async () => {
-    await supabase.from("exam_sessions").update({ status: "force_closed" }).eq("id", sessionId);
-    onForceClose();
-  }, [sessionId, onForceClose]);
-
-  useAntiCheat(true, handleCheat);
 
   // Save chat message to database (fire-and-forget)
   const persistChat = useCallback(
