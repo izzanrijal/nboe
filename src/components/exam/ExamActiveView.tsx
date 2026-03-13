@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
-import useAntiCheat from "@/hooks/useAntiCheat";
+
 import { toast } from "sonner";
 import { Mic, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,13 +84,6 @@ const ExamActiveView = ({
     };
   }, [sessionId, audioStream, start]);
 
-  // Anti-cheat
-  const handleCheat = useCallback(async () => {
-    await supabase.from("exam_sessions").update({ status: "force_closed" }).eq("id", sessionId);
-    onForceClose();
-  }, [sessionId, onForceClose]);
-
-  useAntiCheat(true, handleCheat);
 
   // Save chat message to database (fire-and-forget)
   const persistChat = useCallback(
