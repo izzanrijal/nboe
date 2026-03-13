@@ -219,7 +219,13 @@ const ExamMobile = () => {
     );
   }
 
-  return null;
+  // Fallback: should never reach here, redirect to exam entry
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
+      <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full" />
+      <p className="text-muted-foreground">Memuat...</p>
+    </div>
+  );
 };
 
 export default ExamMobile;
