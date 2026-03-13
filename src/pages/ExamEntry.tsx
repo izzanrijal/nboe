@@ -1,15 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import QRScanner from "@/components/exam/QRScanner";
 import CandidateResultsList from "@/components/exam/CandidateResultsList";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Loader2 } from "lucide-react";
 
 const ExamEntry = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -25,7 +26,18 @@ const ExamEntry = () => {
     );
   }
 
+  if (isNavigating) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-muted-foreground">Membuka sesi ujian...</p>
+      </div>
+    );
+  }
+
   const handleScan = (sessionId: string) => {
+    setIsNavigating(true);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
     navigate(`/exam/${sessionId}`, { replace: true });
   };
 
