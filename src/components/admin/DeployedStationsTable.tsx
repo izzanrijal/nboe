@@ -38,11 +38,45 @@ const DeployedStationsTable = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("exam_sessions").delete().eq("id", id);
-      if (error) throw error;
+      const { data: relatedResults, error: relatedResultsError } = await supabase
+        .from("exam_results")
+        .select("id, audio_file_url")
+        .eq("session_id", id);
+
+      if (relatedResultsError) throw relatedResultsError;
+
+      const audioPaths = (relatedResults ?? [])
+        .map((result) => result.audio_file_url)
+        .filter((path): path is string => !!path);
+
+      if (audioPaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from("exam-audio")
+          .remove(audioPaths);
+        if (storageError) {
+          console.warn("Failed to delete related audio files:", storageError);
+        }
+      }
+
+      const { error: deleteResultsError } = await supabase
+        .from("exam_results")
+        .delete()
+        .eq("session_id", id);
+      if (deleteResultsError) throw deleteResultsError;
+
+      const { error: deleteSessionError } = await supabase
+        .from("exam_sessions")
+        .delete()
+        .eq("id", id);
+      if (deleteSessionError) throw deleteSessionError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deployed_stations"] });
+      queryClient.invalidateQueries({ queryKey: ["exam_results_admin"] });
+      toast({ title: "Session berhasil dihapus" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Gagal menghapus session", description: e.message, variant: "destructive" });
     },
   });
 
