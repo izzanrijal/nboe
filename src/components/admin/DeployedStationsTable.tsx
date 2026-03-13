@@ -144,7 +144,16 @@ const DeployedStationsTable = () => {
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(s.id)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm("Hapus session ini? Hasil ujian terkait juga akan dihapus agar kandidat bisa retake.")) {
+                            deleteMutation.mutate(s.id);
+                          }
+                        }}
+                        disabled={deleteMutation.isPending}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
