@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 
 interface QRScannerProps {
   onScan: (sessionId: string) => void;
@@ -12,7 +11,6 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
   const containerRef = useRef<string>("qr-reader-" + Math.random().toString(36).slice(2));
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
-  const [navigating, setNavigating] = useState(false);
   const scannedRef = useRef(false);
 
   const stopScanner = async () => {
@@ -37,11 +35,11 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
           const match = decodedText.match(/\/exam\/([a-zA-Z0-9-]+)/);
           if (match) {
             scannedRef.current = true;
-            setNavigating(true);
             try {
               await scanner.stop();
             } catch {}
-            setTimeout(() => onScan(match[1]), 100);
+            scannerRef.current = null;
+            onScan(match[1]);
           }
         },
         () => {}
@@ -59,17 +57,8 @@ const QRScanner = ({ onScan }: QRScannerProps) => {
     };
   }, []);
 
-  if (navigating) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-muted-foreground">Memuat sesi ujian...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-6">
+    <div className="flex flex-col items-center gap-4">
       <h1 className="text-2xl font-bold text-foreground">Scan Station QR Code</h1>
       <p className="text-muted-foreground text-sm text-center">
         Arahkan kamera ke QR code pada layar display

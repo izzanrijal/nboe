@@ -20,6 +20,11 @@ const ExamMobile = () => {
   const [step, setStep] = useState<ExamStep>("gatekeeper");
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [validating, setValidating] = useState(false);
+
+  // Force scroll to top on mount to prevent blank screen from scroll offset
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+  }, []);
   const [sessionData, setSessionData] = useState<{
     session_start_time: string;
     time_limit_seconds: number;
