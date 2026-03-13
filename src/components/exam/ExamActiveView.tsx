@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
-import useAntiCheat from "@/hooks/useAntiCheat";
+
 import { toast } from "sonner";
 import { Mic, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
