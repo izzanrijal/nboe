@@ -28,6 +28,7 @@ const CaseManager = () => {
   const [editingCase, setEditingCase] = useState<ClinicalCase | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [assetCaseId, setAssetCaseId] = useState<string | null>(null);
+  const [showImporter, setShowImporter] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
