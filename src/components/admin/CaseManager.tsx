@@ -161,6 +161,15 @@ const CaseManager = () => {
           {assetCaseId && <AssetUploader caseId={assetCaseId} />}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showImporter} onOpenChange={(o) => !o && setShowImporter(false)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Soal dari Excel</DialogTitle>
+          </DialogHeader>
+          <ExcelImporter onClose={() => setShowImporter(false)} />
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
