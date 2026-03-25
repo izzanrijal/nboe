@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet } from "lucide-react";
 import CaseForm from "./CaseForm";
 import AssetUploader from "./AssetUploader";
+import ExcelImporter from "./ExcelImporter";
 
 interface ClinicalCase {
   id: string;
