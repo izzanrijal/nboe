@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet } from "lucide-react";
 import CaseForm from "./CaseForm";
 import AssetUploader from "./AssetUploader";
+import ExcelImporter from "./ExcelImporter";
 
 interface ClinicalCase {
   id: string;
@@ -27,6 +28,7 @@ const CaseManager = () => {
   const [editingCase, setEditingCase] = useState<ClinicalCase | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [assetCaseId, setAssetCaseId] = useState<string | null>(null);
+  const [showImporter, setShowImporter] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -92,9 +94,14 @@ const CaseManager = () => {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Clinical Cases</CardTitle>
-        <Button onClick={handleCreate} size="sm">
-          <Plus className="h-4 w-4 mr-2" /> New Case
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowImporter(true)} variant="outline" size="sm">
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Import Excel
+          </Button>
+          <Button onClick={handleCreate} size="sm">
+            <Plus className="h-4 w-4 mr-2" /> New Case
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -152,6 +159,15 @@ const CaseManager = () => {
             <DialogTitle>Manage Assets</DialogTitle>
           </DialogHeader>
           {assetCaseId && <AssetUploader caseId={assetCaseId} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showImporter} onOpenChange={(o) => !o && setShowImporter(false)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Soal dari Excel</DialogTitle>
+          </DialogHeader>
+          <ExcelImporter onClose={() => setShowImporter(false)} />
         </DialogContent>
       </Dialog>
     </Card>
