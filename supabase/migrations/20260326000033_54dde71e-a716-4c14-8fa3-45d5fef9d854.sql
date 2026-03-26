@@ -1,0 +1,21 @@
+
+-- Insert ACLS VF case
+INSERT INTO public.clinical_cases (title, exam_mode, initial_prompt, questions_text, answer_key_text, reading_time_seconds, time_limit_seconds, show_results_to_candidate, checklist_rubric)
+VALUES (
+  'ACLS - Ventricular Fibrillation',
+  'oral_board',
+  'Seorang pria 58 tahun tiba-tiba kolaps di ruang tunggu IGD. Saat Anda tiba, pasien tidak responsif, tidak bernapas, dan tidak teraba nadi. Monitor menunjukkan gambaran Ventricular Fibrillation (VF). Tim resusitasi sudah tersedia. Anda adalah team leader. Jelaskan langkah-langkah penatalaksanaan Anda.',
+  E'1. Apa tindakan pertama yang Anda lakukan?\n2. Kapan dan berapa dosis epinefrin yang diberikan?\n3. Apa yang Anda lakukan jika setelah defibrilasi ke-2 masih VF?\n4. Kapan Anda mempertimbangkan amiodarone?\n5. Apa yang Anda evaluasi setelah ROSC tercapai?',
+  E'Tindakan pertama: Mulai CPR berkualitas tinggi dan siapkan defibrilator.\nDefibrilasi: Bifasik 120-200J, monofasik 360J.\nEpinefrin: 1mg IV/IO setiap 3-5 menit, diberikan setelah defibrilasi ke-2.\nAmiodarone: 300mg IV bolus setelah defibrilasi ke-3 (VF refrakter), dosis kedua 150mg.\nPasca-ROSC: Evaluasi 12-lead ECG, targeted temperature management 32-36°C, evaluasi penyebab reversibel (H dan T).',
+  180,
+  480,
+  false,
+  '[{"item_text":"Memulai CPR berkualitas tinggi segera (rate 100-120/menit, kedalaman 5-6cm)","points":15,"is_critical":true},{"item_text":"Menginstruksikan defibrilasi dengan energi yang tepat (bifasik 120-200J)","points":15,"is_critical":true},{"item_text":"Meminimalkan interupsi kompresi dada (<10 detik untuk defibrilasi)","points":10,"is_critical":true},{"item_text":"Memberikan epinefrin 1mg IV/IO setelah defibrilasi ke-2","points":10,"is_critical":true},{"item_text":"Mengulang epinefrin setiap 3-5 menit","points":5,"is_critical":false},{"item_text":"Memberikan amiodarone 300mg IV setelah defibrilasi ke-3 (VF refrakter)","points":10,"is_critical":true},{"item_text":"Menyebutkan dosis amiodarone kedua 150mg","points":5,"is_critical":false},{"item_text":"Memastikan advanced airway (intubasi/supraglottic) dan konfirmasi posisi","points":5,"is_critical":false},{"item_text":"Mengevaluasi penyebab reversibel (Hs dan Ts)","points":10,"is_critical":false},{"item_text":"Menjelaskan tatalaksana pasca-ROSC (ECG 12-lead, TTM, evaluasi PCI)","points":10,"is_critical":false},{"item_text":"Komunikasi efektif sebagai team leader (closed-loop communication)","points":5,"is_critical":false}]'::jsonb
+);
+
+-- Insert corresponding answer key
+INSERT INTO public.case_answer_keys (case_id, answer_key_text, checklist_rubric)
+SELECT id,
+  E'Tindakan pertama: Mulai CPR berkualitas tinggi dan siapkan defibrilator.\nDefibrilasi: Bifasik 120-200J, monofasik 360J.\nEpinefrin: 1mg IV/IO setiap 3-5 menit, diberikan setelah defibrilasi ke-2.\nAmiodarone: 300mg IV bolus setelah defibrilasi ke-3 (VF refrakter), dosis kedua 150mg.\nPasca-ROSC: Evaluasi 12-lead ECG, targeted temperature management 32-36°C, evaluasi penyebab reversibel (H dan T).',
+  '[{"item_text":"Memulai CPR berkualitas tinggi segera (rate 100-120/menit, kedalaman 5-6cm)","points":15,"is_critical":true},{"item_text":"Menginstruksikan defibrilasi dengan energi yang tepat (bifasik 120-200J)","points":15,"is_critical":true},{"item_text":"Meminimalkan interupsi kompresi dada (<10 detik untuk defibrilasi)","points":10,"is_critical":true},{"item_text":"Memberikan epinefrin 1mg IV/IO setelah defibrilasi ke-2","points":10,"is_critical":true},{"item_text":"Mengulang epinefrin setiap 3-5 menit","points":5,"is_critical":false},{"item_text":"Memberikan amiodarone 300mg IV setelah defibrilasi ke-3 (VF refrakter)","points":10,"is_critical":true},{"item_text":"Menyebutkan dosis amiodarone kedua 150mg","points":5,"is_critical":false},{"item_text":"Memastikan advanced airway (intubasi/supraglottic) dan konfirmasi posisi","points":5,"is_critical":false},{"item_text":"Mengevaluasi penyebab reversibel (Hs dan Ts)","points":10,"is_critical":false},{"item_text":"Menjelaskan tatalaksana pasca-ROSC (ECG 12-lead, TTM, evaluasi PCI)","points":10,"is_critical":false},{"item_text":"Komunikasi efektif sebagai team leader (closed-loop communication)","points":5,"is_critical":false}]'::jsonb
+FROM public.clinical_cases WHERE title = 'ACLS - Ventricular Fibrillation';
