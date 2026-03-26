@@ -35,7 +35,17 @@ function parseRubricData(raw: any): RubricData {
   if (Array.isArray(raw) && raw.length > 0) {
     return {
       enabled: true,
-      items: raw.map((text: string) => ({ text, points: 10, isCritical: false })),
+      items: raw.map((item: any) => {
+        if (typeof item === "string") {
+          return { text: item, points: 10, isCritical: false };
+        }
+        // Handle {item_text, points, is_critical} format from Excel import / DB
+        return {
+          text: item.text || item.item_text || String(item),
+          points: item.points ?? 10,
+          isCritical: item.isCritical ?? item.is_critical ?? false,
+        };
+      }),
     };
   }
   return { enabled: false, items: [] };
