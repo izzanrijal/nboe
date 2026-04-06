@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,80 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Upload, Image, Stethoscope, MessageSquare } from "lucide-react";
+import { Trash2, Upload, Image, Stethoscope, MessageSquare, FileUp } from "lucide-react";
+
+interface DropZoneProps {
+  accept: string;
+  file: File | null;
+  onFileSelect: (file: File | null) => void;
+}
+
+const DropZone = ({ accept, file, onFileSelect }: DropZoneProps) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragIn = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragOut = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) onFileSelect(droppedFile);
+  }, [onFileSelect]);
+
+  return (
+    <div
+      onDragEnter={handleDragIn}
+      onDragLeave={handleDragOut}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+      onClick={() => inputRef.current?.click()}
+      className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer transition-colors ${
+        isDragging
+          ? "border-primary bg-primary/5"
+          : file
+          ? "border-primary/50 bg-primary/5"
+          : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => onFileSelect(e.target.files?.[0] ?? null)}
+      />
+      <FileUp className={`h-8 w-8 ${file ? "text-primary" : "text-muted-foreground"}`} />
+      {file ? (
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">{file.name}</p>
+          <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB — klik atau drop untuk ganti</p>
+        </div>
+      ) : (
+        <div className="text-center">
+          <p className="text-sm font-medium text-muted-foreground">Drag & drop file di sini</p>
+          <p className="text-xs text-muted-foreground">atau klik untuk memilih file</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface AssetUploaderProps {
   caseId: string;
@@ -154,10 +227,7 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
       {/* Case Media */}
       <TabsContent value="case_media" className="space-y-3">
         <p className="text-xs text-muted-foreground">Gambar/video yang ditampilkan bersama kasus saat waktu membaca.</p>
-        <div className="space-y-2">
-          <Label>File</Label>
-          <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </div>
+        <DropZone accept="image/*,video/*" file={activeTab === "case_media" ? file : null} onFileSelect={setFile} />
         <div className="space-y-2">
           <Label>Tipe</Label>
           <Select value={assetType} onValueChange={setAssetType}>
@@ -180,10 +250,7 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
       {/* Examination */}
       <TabsContent value="examination" className="space-y-3">
         <p className="text-xs text-muted-foreground">Media yang ditampilkan saat peserta meminta pemeriksaan tertentu via keyword.</p>
-        <div className="space-y-2">
-          <Label>File</Label>
-          <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </div>
+        <DropZone accept="image/*,video/*" file={activeTab === "examination" ? file : null} onFileSelect={setFile} />
         <div className="space-y-2">
           <Label>Trigger Keywords (pisah koma)</Label>
           <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. thorax, x-ray, ekg" />
