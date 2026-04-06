@@ -1,74 +1,26 @@
 
 
-# Import Soal Exam via Excel
+# Fix: "Objects are not valid as a React child" for Rubric Data
 
-## Konsep
+## Root Cause
 
-Admin dapat mengunduh template Excel (.xlsx) yang sudah prefilled dengan contoh, mengisinya, lalu upload untuk membuat banyak case sekaligus. Termasuk daftar tilik (rubric) yang ditangani via sheet terpisah.
+The rubric data in the database exists in multiple incompatible formats:
 
-## Struktur Template Excel
+1. **Raw array** from ExcelImporter/migration: `[{item_text, points, is_critical}]`
+2. **Wrapped format** from CaseForm saves: `{enabled: true, items: [{text, points, isCritical}]}`
 
-**Sheet 1: "Cases"**
+The `parseRubricData` function in CaseForm has a bug on line 32-33: when rubric data is in the `{enabled, items}` format, it returns the object **without normalizing** the items inside. If a case was saved with items still using `{item_text, is_critical}` keys (mixed format), those raw objects leak into RubricBuilder and crash React.
 
-| Kolom | Contoh | Mapping DB |
-|-------|--------|------------|
-| title | Kasus Pneumonia | `title` |
-| exam_mode | oral_board / panel_exam | `exam_mode` |
-| initial_prompt | Pasien datang dengan... | `initial_prompt` |
-| questions_text | 1. Apa diagnosis? | `questions_text` |
-| answer_key_text | Pneumonia lobaris... | `answer_key_text` |
-| reading_time_seconds | 120 | `reading_time_seconds` |
-| time_limit_seconds | 360 | `time_limit_seconds` |
-| show_results_to_candidate | TRUE/FALSE | `show_results_to_candidate` |
+Additionally, ExcelImporter stores rubric as raw `[{item_text, points, is_critical}]` arrays directly into the DB, creating format inconsistency.
 
-**Sheet 2: "Rubric"**
+## Changes
 
-| Kolom | Contoh |
-|-------|--------|
-| case_title | Kasus Pneumonia *(harus cocok dengan Sheet 1)* |
-| item_text | Menyebutkan diagnosis pneumonia |
-| points | 10 |
-| is_critical | TRUE/FALSE |
+### 1. `src/components/admin/CaseForm.tsx` — Normalize items in ALL branches
+- In `parseRubricData`, when the `{enabled, items}` format is detected, also normalize each item inside `items` (convert `item_text` → `text`, `is_critical` → `isCritical`)
 
-Rubric items di-group berdasarkan `case_title` lalu dijadikan JSON `checklist_rubric`.
+### 2. `src/components/admin/ExcelImporter.tsx` — Save normalized format
+- Change rubric saved to DB from `[{item_text, points, is_critical}]` to `{enabled: true, items: [{text, points, isCritical}]}` so all new imports use the canonical format
 
-## Komponen Baru
-
-**`src/components/admin/ExcelImporter.tsx`**
-- Tombol "Download Template" → generate .xlsx prefilled dengan 1 contoh kasus + rubric menggunakan library `xlsx` (SheetJS)
-- Tombol "Upload Excel" → parse file, validasi, preview daftar kasus yang akan diimport
-- Tabel preview dengan status validasi per baris (title wajib, exam_mode valid, dll)
-- Tombol "Import X Cases" → batch insert ke `clinical_cases` + `case_answer_keys`
-- Error handling: highlight baris bermasalah
-
-## Integrasi
-
-- Ditambahkan di `CaseManager.tsx` sebagai tombol baru di header, di samping "New Case"
-- Menggunakan library `xlsx` (sudah tersedia di npm) untuk read/write Excel di browser
-- Setelah import berhasil, invalidate query `clinical_cases`
-
-## Alur
-
-```text
-Admin klik "Download Template"
-  → Browser download template.xlsx (prefilled contoh)
-  → Admin isi data di Excel
-  → Admin klik "Upload Excel" → pilih file
-  → Preview tabel muncul dengan validasi
-  → Admin klik "Import"
-  → Batch insert ke DB
-  → Daftar case refresh
-```
-
-## Dependency
-
-- Install `xlsx` (SheetJS) — client-side Excel parsing/generation, zero backend needed
-
-## File Changes
-
-| File | Perubahan |
-|------|-----------|
-| `package.json` | Tambah `xlsx` dependency |
-| `src/components/admin/ExcelImporter.tsx` | Komponen baru: template download + upload + preview + import |
-| `src/components/admin/CaseManager.tsx` | Tambah tombol + dialog untuk ExcelImporter |
+### 3. `src/components/admin/CaseManager.tsx` — Defensive rubric count
+- Add a helper function to safely count rubric items regardless of format, preventing any object from being rendered as a React child
 
