@@ -331,7 +331,7 @@ const StationDisplay = () => {
           <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
         ) : (
           <>
-            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
+            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} questionsText={caseData.questions_text} />}
             {caseMedia.length > 0 && (
               <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
                 {caseMedia.map((media, idx) => (
