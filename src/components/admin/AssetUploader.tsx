@@ -250,10 +250,7 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
       {/* Examination */}
       <TabsContent value="examination" className="space-y-3">
         <p className="text-xs text-muted-foreground">Media yang ditampilkan saat peserta meminta pemeriksaan tertentu via keyword.</p>
-        <div className="space-y-2">
-          <Label>File</Label>
-          <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </div>
+        <DropZone accept="image/*,video/*" file={activeTab === "examination" ? file : null} onFileSelect={setFile} />
         <div className="space-y-2">
           <Label>Trigger Keywords (pisah koma)</Label>
           <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. thorax, x-ray, ekg" />
