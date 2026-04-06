@@ -22,6 +22,7 @@ interface CaseData {
   title: string;
   initial_prompt: string;
   time_limit_seconds: number;
+  questions_text: string;
 }
 
 interface AssetData {
