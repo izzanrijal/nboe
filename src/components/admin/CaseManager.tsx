@@ -125,7 +125,7 @@ const CaseManager = () => {
                   <TableCell className="font-medium">{c.title}</TableCell>
                   <TableCell>{c.exam_mode === "oral_board" ? "Oral Board" : "Panel Exam"}</TableCell>
                   <TableCell>{c.time_limit_seconds}</TableCell>
-                  <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : (c.checklist_rubric?.items?.length ?? 0)}</TableCell>
+                  <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : (Array.isArray(c.checklist_rubric?.items) ? c.checklist_rubric.items.length : 0)}</TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
                       <Upload className="h-4 w-4" />

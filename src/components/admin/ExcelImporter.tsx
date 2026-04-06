@@ -167,7 +167,14 @@ const ExcelImporter = ({ onClose }: ExcelImporterProps) => {
             reading_time_seconds: c.reading_time_seconds,
             time_limit_seconds: c.time_limit_seconds,
             show_results_to_candidate: c.show_results_to_candidate,
-            checklist_rubric: c.rubric,
+            checklist_rubric: {
+              enabled: c.rubric.length > 0,
+              items: c.rubric.map((r) => ({
+                text: r.item_text,
+                points: r.points,
+                isCritical: r.is_critical,
+              })),
+            },
           })
           .select("id")
           .single();
@@ -180,7 +187,14 @@ const ExcelImporter = ({ onClose }: ExcelImporterProps) => {
             .insert({
               case_id: inserted.id,
               answer_key_text: c.answer_key_text,
-              checklist_rubric: c.rubric,
+              checklist_rubric: {
+                enabled: c.rubric.length > 0,
+                items: c.rubric.map((r) => ({
+                  text: r.item_text,
+                  points: r.points,
+                  isCritical: r.is_critical,
+                })),
+              },
             });
           if (akError) throw new Error(`Gagal insert answer key "${c.title}": ${akError.message}`);
         }

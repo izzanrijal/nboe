@@ -28,25 +28,26 @@ interface CaseFormProps {
   onClose: () => void;
 }
 
+function normalizeItem(item: any): { text: string; points: number; isCritical: boolean } {
+  if (typeof item === "string") {
+    return { text: item, points: 10, isCritical: false };
+  }
+  return {
+    text: item.text || item.item_text || String(item),
+    points: item.points ?? 10,
+    isCritical: item.isCritical ?? item.is_critical ?? false,
+  };
+}
+
 function parseRubricData(raw: any): RubricData {
   if (raw && typeof raw === "object" && !Array.isArray(raw) && "enabled" in raw) {
-    return raw as RubricData;
+    return {
+      enabled: !!raw.enabled,
+      items: Array.isArray(raw.items) ? raw.items.map(normalizeItem) : [],
+    };
   }
   if (Array.isArray(raw) && raw.length > 0) {
-    return {
-      enabled: true,
-      items: raw.map((item: any) => {
-        if (typeof item === "string") {
-          return { text: item, points: 10, isCritical: false };
-        }
-        // Handle {item_text, points, is_critical} format from Excel import / DB
-        return {
-          text: item.text || item.item_text || String(item),
-          points: item.points ?? 10,
-          isCritical: item.isCritical ?? item.is_critical ?? false,
-        };
-      }),
-    };
+    return { enabled: true, items: raw.map(normalizeItem) };
   }
   return { enabled: false, items: [] };
 }
