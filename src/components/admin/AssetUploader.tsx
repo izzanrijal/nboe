@@ -227,10 +227,7 @@ const AssetUploader = ({ caseId }: AssetUploaderProps) => {
       {/* Case Media */}
       <TabsContent value="case_media" className="space-y-3">
         <p className="text-xs text-muted-foreground">Gambar/video yang ditampilkan bersama kasus saat waktu membaca.</p>
-        <div className="space-y-2">
-          <Label>File</Label>
-          <Input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </div>
+        <DropZone accept="image/*,video/*" file={activeTab === "case_media" ? file : null} onFileSelect={setFile} />
         <div className="space-y-2">
           <Label>Tipe</Label>
           <Select value={assetType} onValueChange={setAssetType}>
