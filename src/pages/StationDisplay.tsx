@@ -203,7 +203,7 @@ const StationDisplay = () => {
   useEffect(() => {
     if (state !== "active" || !session?.case_id) return;
     const fetchCase = async () => {
-      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds").eq("id", session.case_id).single();
+      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds, questions_text").eq("id", session.case_id).single();
       if (data) setCaseData(data);
       const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords, category").eq("case_id", session.case_id);
       if (assetData) {
