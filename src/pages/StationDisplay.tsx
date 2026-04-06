@@ -22,6 +22,7 @@ interface CaseData {
   title: string;
   initial_prompt: string;
   time_limit_seconds: number;
+  questions_text: string;
 }
 
 interface AssetData {
@@ -202,7 +203,7 @@ const StationDisplay = () => {
   useEffect(() => {
     if (state !== "active" || !session?.case_id) return;
     const fetchCase = async () => {
-      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds").eq("id", session.case_id).single();
+      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds, questions_text").eq("id", session.case_id).single();
       if (data) setCaseData(data);
       const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords, category").eq("case_id", session.case_id);
       if (assetData) {
@@ -330,7 +331,7 @@ const StationDisplay = () => {
           <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
         ) : (
           <>
-            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} />}
+            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} questionsText={caseData.questions_text} />}
             {caseMedia.length > 0 && (
               <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
                 {caseMedia.map((media, idx) => (
