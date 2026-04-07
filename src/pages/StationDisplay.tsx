@@ -185,7 +185,6 @@ const StationDisplay = () => {
       const row = Array.isArray(data) ? data?.[0] : data;
       if (row) updateFromRow(row);
     }, 3000);
-    }, 3000);
 
     return () => {
       supabase.removeChannel(channel);
