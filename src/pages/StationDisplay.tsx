@@ -83,10 +83,10 @@ const StationDisplay = () => {
       const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
       setSession(sessionRow);
       setSession(data);
-      if (data.status === "active") setState("active");
-      else if (data.status === "completed" || data.status === "force_closed") {
+      if (sessionRow.status === "active") setState("active");
+      else if (sessionRow.status === "completed" || sessionRow.status === "force_closed") {
         setState("completed_screen");
-        setTimeout(() => handleSessionCompleted(data.case_id), 5000);
+        setTimeout(() => handleSessionCompleted(sessionRow.case_id), 5000);
       }
       else setState("waiting");
     };
