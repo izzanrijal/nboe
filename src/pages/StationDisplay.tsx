@@ -181,12 +181,10 @@ const StationDisplay = () => {
       .subscribe();
 
     const pollInterval = setInterval(async () => {
-      const { data } = await supabase
-        .from("exam_sessions")
-        .select("id, case_id, status, session_start_time")
-        .eq("id", session.id)
-        .single();
-      if (data) updateFromRow(data);
+      const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
+      const row = Array.isArray(data) ? data?.[0] : data;
+      if (row) updateFromRow(row);
+    }, 3000);
     }, 3000);
 
     return () => {
