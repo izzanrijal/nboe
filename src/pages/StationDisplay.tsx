@@ -190,7 +190,7 @@ const StationDisplay = () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, [session?.id, session?.case_id, handleSessionCompleted]);
+  }, [session?.id, session?.case_id, currentToken, handleSessionCompleted]);
 
   // Fetch case data and assets when active
   useEffect(() => {
