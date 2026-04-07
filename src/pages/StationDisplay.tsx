@@ -76,15 +76,12 @@ const StationDisplay = () => {
   useEffect(() => {
     if (!currentToken) return;
     const fetchSession = async () => {
-      const { data, error } = await supabase
-        .from("exam_sessions")
-        .select("id, case_id, status, session_start_time")
-        .eq("station_token", currentToken)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("get_session_by_token", { _token: currentToken });
 
-      if (error || !data) { setState("loading"); return; }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row) { setState("loading"); return; }
+      const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
+      setSession(sessionRow);
       setSession(data);
       if (data.status === "active") setState("active");
       else if (data.status === "completed" || data.status === "force_closed") {
