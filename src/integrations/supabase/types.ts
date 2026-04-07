@@ -361,6 +361,38 @@ export type Database = {
         Args: { _candidate_id: string; _session_id: string }
         Returns: Json
       }
+      get_case_assets_for_display: {
+        Args: { _case_id: string }
+        Returns: {
+          answer_text: string
+          asset_type: string
+          asset_url: string
+          category: string
+          id: string
+          trigger_keywords: string[]
+        }[]
+      }
+      get_case_display: {
+        Args: { _case_id: string }
+        Returns: {
+          exam_mode: string
+          initial_prompt: string
+          questions_text: string
+          reading_time_seconds: number
+          show_results_to_candidate: boolean
+          time_limit_seconds: number
+          title: string
+        }[]
+      }
+      get_session_by_token: {
+        Args: { _token: string }
+        Returns: {
+          case_id: string
+          id: string
+          session_start_time: string
+          status: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
