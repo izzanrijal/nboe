@@ -307,34 +307,68 @@ const StationDisplay = () => {
     );
   }
 
+  const hasMediaContent = activeAsset || caseMedia.length > 0;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Header: Badge + large timer */}
       {session?.session_start_time && caseData && (
-        <div className="flex items-center justify-center py-6 border-b border-border">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-center py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-6">
             {sequenceInfo && sequenceInfo.total > 1 && (
-              <Badge className="text-sm" variant="secondary">
+              <Badge className="text-lg px-4 py-1" variant="secondary">
                 Ujian {sequenceInfo.currentOrder} / {sequenceInfo.total}
               </Badge>
             )}
-            <CountdownTimer sessionStartTime={session.session_start_time} timeLimitSeconds={caseData.time_limit_seconds} onComplete={handleTimerComplete} />
+            <CountdownTimer
+              sessionStartTime={session.session_start_time}
+              timeLimitSeconds={caseData.time_limit_seconds}
+              onComplete={handleTimerComplete}
+              className="text-foreground"
+            />
           </div>
         </div>
       )}
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
-        {activeAsset ? (
-          <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
-        ) : (
+
+      {/* Main content area */}
+      <div className="flex-1 flex min-h-0">
+        {hasMediaContent ? (
           <>
-            {caseData && <CasePromptDisplay title={caseData.title} prompt={caseData.initial_prompt} questionsText={caseData.questions_text} />}
-            {caseMedia.length > 0 && (
-              <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
-                {caseMedia.map((media, idx) => (
-                  <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
-                ))}
-              </div>
-            )}
+            {/* Sidebar: case info + questions (always visible) */}
+            <div className="w-[340px] shrink-0 border-r border-border bg-muted/30 overflow-y-auto">
+              {caseData && (
+                <CasePromptDisplay
+                  title={caseData.title}
+                  prompt={caseData.initial_prompt}
+                  questionsText={caseData.questions_text}
+                  compact
+                />
+              )}
+            </div>
+            {/* Main display area: active asset or case media */}
+            <div className="flex-1 flex items-center justify-center p-8">
+              {activeAsset ? (
+                <AssetRenderer url={activeAsset.asset_url} type={activeAsset.asset_type} />
+              ) : (
+                <div className="flex flex-wrap gap-4 justify-center max-w-4xl mx-auto">
+                  {caseMedia.map((media, idx) => (
+                    <AssetRenderer key={idx} url={media.asset_url} type={media.asset_type} />
+                  ))}
+                </div>
+              )}
+            </div>
           </>
+        ) : (
+          /* Full width: no media, show case prompt centered */
+          <div className="flex-1 flex flex-col items-center justify-center p-8">
+            {caseData && (
+              <CasePromptDisplay
+                title={caseData.title}
+                prompt={caseData.initial_prompt}
+                questionsText={caseData.questions_text}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>

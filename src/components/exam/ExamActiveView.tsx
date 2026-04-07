@@ -5,7 +5,7 @@ import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
 
 import { toast } from "sonner";
-import { Mic, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
+import { Mic, Monitor, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -250,6 +250,14 @@ const ExamActiveView = ({
         </span>
       </div>
 
+      {/* Monitor focus banner */}
+      <div className="flex items-center justify-center gap-2 py-2 px-4 bg-primary/10 border-b border-primary/20">
+        <Monitor className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs text-primary font-medium">
+          Perhatikan layar monitor — hasil pemeriksaan akan ditampilkan di sana
+        </span>
+      </div>
+
       {/* Case + Questions (collapsible) */}
       {(casePrompt || questionsText) && (
         <div className="border-b border-border bg-muted/30">
@@ -312,9 +320,15 @@ const ExamActiveView = ({
           )
         )}
         {messages.length === 0 && (
-          <p className="text-muted-foreground text-center text-sm mt-8">
-            Ketik pesan untuk bertanya atau meminta pemeriksaan dari penguji.
-          </p>
+          <div className="text-center mt-8 space-y-3 max-w-xs mx-auto">
+            <p className="text-muted-foreground text-sm font-medium">
+              Anda dapat meminta pemeriksaan atau media melalui chat ini.
+            </p>
+            <div className="text-muted-foreground/70 text-xs space-y-1">
+              <p>Contoh: <span className="italic">"Rontgen thorax"</span>, <span className="italic">"Lab darah lengkap"</span></p>
+              <p>Hasil akan ditampilkan di <span className="font-semibold text-primary">layar monitor</span>.</p>
+            </div>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
