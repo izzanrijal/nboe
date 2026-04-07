@@ -76,20 +76,16 @@ const StationDisplay = () => {
   useEffect(() => {
     if (!currentToken) return;
     const fetchSession = async () => {
-      const { data, error } = await supabase
-        .from("exam_sessions")
-        .select("id, case_id, status, session_start_time")
-        .eq("station_token", currentToken)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("get_session_by_token", { _token: currentToken });
 
-      if (error || !data) { setState("loading"); return; }
-      setSession(data);
-      if (data.status === "active") setState("active");
-      else if (data.status === "completed" || data.status === "force_closed") {
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row) { setState("loading"); return; }
+      const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
+      setSession(sessionRow);
+      if (sessionRow.status === "active") setState("active");
+      else if (sessionRow.status === "completed" || sessionRow.status === "force_closed") {
         setState("completed_screen");
-        setTimeout(() => handleSessionCompleted(data.case_id), 5000);
+        setTimeout(() => handleSessionCompleted(sessionRow.case_id), 5000);
       }
       else setState("waiting");
     };
@@ -185,30 +181,29 @@ const StationDisplay = () => {
       .subscribe();
 
     const pollInterval = setInterval(async () => {
-      const { data } = await supabase
-        .from("exam_sessions")
-        .select("id, case_id, status, session_start_time")
-        .eq("id", session.id)
-        .single();
-      if (data) updateFromRow(data);
+      const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
+      const row = Array.isArray(data) ? data?.[0] : data;
+      if (row) updateFromRow(row);
     }, 3000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, [session?.id, session?.case_id, handleSessionCompleted]);
+  }, [session?.id, session?.case_id, currentToken, handleSessionCompleted]);
 
   // Fetch case data and assets when active
   useEffect(() => {
     if (state !== "active" || !session?.case_id) return;
     const fetchCase = async () => {
-      const { data } = await supabase.from("clinical_cases").select("title, initial_prompt, time_limit_seconds, questions_text").eq("id", session.case_id).single();
-      if (data) setCaseData(data);
-      const { data: assetData } = await supabase.from("case_assets").select("id, asset_url, asset_type, trigger_keywords, category").eq("case_id", session.case_id);
-      if (assetData) {
-        setAssets(assetData.filter((a: any) => a.category === "examination"));
-        setCaseMedia(assetData.filter((a: any) => a.category === "case_media"));
+      const { data } = await supabase.rpc("get_case_display", { _case_id: session.case_id });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) setCaseData(row as any);
+      const { data: assetData } = await supabase.rpc("get_case_assets_for_display", { _case_id: session.case_id });
+      const assetRows = Array.isArray(assetData) ? assetData : [];
+      if (assetRows.length) {
+        setAssets(assetRows.filter((a: any) => a.category === "examination"));
+        setCaseMedia(assetRows.filter((a: any) => a.category === "case_media"));
       }
     };
     fetchCase();
