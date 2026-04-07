@@ -82,7 +82,6 @@ const StationDisplay = () => {
       if (error || !row) { setState("loading"); return; }
       const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
       setSession(sessionRow);
-      setSession(data);
       if (sessionRow.status === "active") setState("active");
       else if (sessionRow.status === "completed" || sessionRow.status === "force_closed") {
         setState("completed_screen");
