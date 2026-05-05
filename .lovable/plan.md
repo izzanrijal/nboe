@@ -1,58 +1,51 @@
+## Expand Manual — Batch 1: Station Echocardiography
 
+**Mode:** Manual writing (0 kredit AI), output ~6500-7500 kata.
 
-# Improve Station Display & Chat UX
+### Eksekusi Batch Ini
 
-## Problems Identified
+1. **Setup workspace persisten**
+   - Buat `/mnt/documents/stations_wip/` (persisten lintas sandbox reset)
+   - Copy panduan lama sebagai backup
 
-1. **Questions hidden when asset is active** — The station display uses a ternary: when `activeAsset` is shown, `CasePromptDisplay` (including questions) disappears entirely. Questions should always be visible alongside assets.
+2. **Tulis Station 1: Echocardiography** → `/mnt/documents/stations_wip/01_echo.md`
+   
+   Struktur:
+   - **Scope & Blueprint** (~400 kata) — kompetensi PERKI/Konsil, weight, alat ujian
+   - **High-Yield Knowledge** (~1800 kata)
+     - Chamber quantification (LV mass, LA volume index, RV TAPSE/S')
+     - Sistolik LV: EF Simpson biplane, GLS, 3D
+     - Diastolik: algoritma ASE 2016 (E/A, e', E/e', LA vol, TR vel)
+     - Valvular: stenosis (PHT, continuity, DSE low-flow), regurgitasi (PISA, vena contracta, ERO)
+     - RV function & PH (TRV, PASP, PVR echo)
+     - Perikardial: tamponade vs konstriktif (annulus reversus, septal bounce)
+     - Stress echo protokol & interpretasi
+     - TEE views & indikasi (LAA thrombus, IE, prostetik)
+   - **OSCE Skenario × 5** (~3000 kata):
+     1. MS rematik untuk PMBV (Wilkins score lengkap, dialog 12 turn, rubrik 20 item)
+     2. AS severe low-flow low-gradient (DSE protokol, dialog, rubrik)
+     3. Functional MR vs primary MR (mekanisme Carpentier, dialog, rubrik)
+     4. HFpEF dengan diastolic dysfunction grade 2 (algoritma ASE, dialog, rubrik)
+     5. Suspect IE pada katup prostetik (TTE→TEE, dialog, rubrik)
+   - **Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & pembahasan
+   - **Cheat Sheet H-1** (~400 kata) — bullet padat angka cut-off
 
-2. **Timer too small on monitor** — The `CountdownTimer` on StationDisplay uses default sizing. On a large display PC, it should be prominent (large font).
+3. **Verifikasi & Quality Check**
+   - Word count harus 6500-7500
+   - Cek tidak ada Unicode subscript (H₂O → H<sub>2</sub>O untuk reportlab nanti)
+   - Tampilkan ringkasan ke user
 
-3. **Chat guidance missing** — The empty-state hint in ExamActiveView is vague. Candidates need clear instructions that they can request examinations/media to be displayed on the monitor, and that the monitor is the primary focus.
+### Yang TIDAK Dilakukan di Batch Ini
 
-## Changes
+- Tidak rebuild PDF (PDF final hanya di-rebuild setelah semua 9 station selesai)
+- Tidak menyentuh station lain
+- Tidak panggil AI gateway
 
-### 1. `src/pages/StationDisplay.tsx` — Restructure active layout
+### Output Batch 1
 
-- Split the active view into a **sidebar** (case info + questions, always visible) and a **main area** (asset or case media).
-- Make the timer large and prominent in the header.
-- When an asset is triggered, show it in the main area while keeping the case title and questions visible in a side panel.
+- File baru: `/mnt/documents/stations_wip/01_echo.md` (~7000 kata)
+- Pesan akhir berisi: konfirmasi word count, ringkasan 5 skenario yang ditulis, instruksi balas **"lanjut"** untuk Batch 2 (Intervensi).
 
-```text
-┌──────────────────────────────────────────────┐
-│  [Badge]     ██ 05:32 ██     Timer (large)   │
-├──────────────────┬───────────────────────────┤
-│  Case Title      │                           │
-│  ─────────────── │   Active Asset /          │
-│  Prompt text     │   Case Media              │
-│  ─────────────── │   (main display area)     │
-│  Soal:           │                           │
-│  1. ...          │                           │
-│  2. ...          │                           │
-│  3. ...          │                           │
-└──────────────────┴───────────────────────────┘
-```
+### Setelah Approve
 
-- When no asset is active and no case media exists, the prompt + questions fill the full width (current behavior).
-- When an asset or case media is present, use a two-column layout: left = case info (narrower), right = asset/media (wider).
-
-### 2. `src/components/station/CountdownTimer.tsx` — No changes needed
-The component already accepts `className` for sizing. We'll pass larger classes from StationDisplay.
-
-### 3. `src/components/exam/ExamActiveView.tsx` — Improve chat empty state & guidance
-
-- Replace the generic empty-state text with a more descriptive guidance message:
-  - Inform candidates they can request examinations (e.g., "Rontgen thorax", "Lab darah lengkap")
-  - Explain that results will appear on the monitor screen
-  - Emphasize focusing on the monitor for visual results
-- Add a subtle persistent hint banner below the case section (above chat messages) reminding candidates about the monitor interaction.
-
-### 4. `src/components/station/CasePromptDisplay.tsx` — Add compact mode
-
-- Add an optional `compact` prop for the sidebar layout on StationDisplay, using smaller text and tighter spacing so it fits in a side panel.
-
-## Files to Edit
-- `src/pages/StationDisplay.tsx`
-- `src/components/station/CasePromptDisplay.tsx`
-- `src/components/exam/ExamActiveView.tsx`
-
+Saya langsung mulai menulis Station 1 di pesan berikut. Tidak ada pertanyaan tambahan.
