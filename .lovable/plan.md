@@ -1,39 +1,44 @@
-## Batch 2: Station Elektrofisiologi & Aritmia (Manual, ~6500-7500 kata)
+## Batch 3: Station Rehabilitasi Kardiovaskular & Pencegahan (Manual, ~6500–7500 kata)
 
-User mengubah urutan: skip dulu Intervensi, kerjakan **EP & Aritmia** sekarang.
+User mengubah urutan: kerjakan **Rehabilitasi Kardiovaskular** sekarang (skip Intervensi/Cathlab dulu).
 
 ### Output
-File baru: `/mnt/documents/stations_wip/02_ep_aritmia.md` (~7000 kata, 0 kredit AI).
+File baru: `/mnt/documents/stations_wip/03_rehab_prevensi.md` (~7000 kata, **0 kredit AI**, ditulis manual).
 
 ### Struktur Konten
 
 **1. Scope & Blueprint** (~350 kata)
-- Kompetensi PERKI/Konsil EP, weight ujian, alat (ECG 12-lead, Holter, EPS report, device interrogation printout).
+- Kompetensi PERKI/AACVPR/EAPC, fase rehab (I inpatient → IV maintenance), tim multidisiplin, alat (CPET, 6MWT, ergometer, treadmill Bruce/modified Bruce, Borg scale).
 
 **2. High-Yield Knowledge** (~2000 kata)
-- **Bradiaritmia & Pacing**: AV block klasifikasi, indikasi PPM (ESC 2021), CRT (LBBB ≥130 ms, EF ≤35%), HBP/LBBAP, mode pacing (DDD vs VVI, AAI-SafeR).
-- **SVT**: AVNRT (slow-fast/atypical), AVRT (WPW, antidromik), AT focal vs makro-reentry, manuver vagal, adenosin algoritma, ablation success rate.
-- **AF/AFL**: CHA₂DS₂-VASc, HAS-BLED, EHRA symptom, ABC pathway, rhythm vs rate (EAST-AFNET 4, CASTLE-AF, CABANA), DOAC dosing, LAA closure (Watchman).
-- **VT/VF**: ischemic vs non-ischemic, ARVC (Padua criteria), Brugada (tipe 1 spontan vs ajmaline), LQTS (Schwartz score, gen-spesifik), CPVT, idiopathic VT (RVOT, fascicular), storm management.
-- **ICD/Wearable**: primary vs secondary prevention, MADIT-II, DANISH, S-ICD vs TV-ICD, WCD (VEST trial).
-- **Sudden Cardiac Death**: screening atlet (Seattle/International criteria), genetik.
+- **Risk Stratification AACVPR**: low/moderate/high risk untuk supervised exercise.
+- **Exercise Prescription FITT-VP**: Frequency, Intensity (HRR Karvonen 40–80%, %VO₂peak, Borg 11–14, ventilatory threshold), Time, Type, Volume, Progression.
+- **CPET Interpretation**: VO₂peak, VE/VCO₂ slope (>35 buruk), RER ≥1.10, OUES, AT, oscillatory ventilation, Weber class A–D, prognostic cut-off HF (peak VO₂ <14 untuk transplant, <12 dengan beta-blocker).
+- **6MWT**: protokol ATS 2002, prediksi Enright, MCID 30 m, desaturasi.
+- **Indikasi & Kontraindikasi CR**: post-MI, post-PCI/CABG, HF (HF-ACTION), valve repair/replacement, LVAD, post-transplant, PAD claudication, ICD/CRT.
+- **Komponen Core CR**: exercise, edukasi, gizi (DASH/Mediterranean, garam <5 g, PREDIMED), psikososial (PHQ-9, GAD-7), smoking cessation (5A's, varenicline/bupropion, NRT), adherence obat.
+- **Pencegahan Sekunder ESC 2021**: target LDL <55 mg/dL (sangat tinggi) / <40 (rekuren), BP <130/80, HbA1c <7%, BMI 20–25, aktivitas 150–300 menit moderate atau 75–150 vigorous.
+- **Pencegahan Primer ESC 2021/AHA 2019**: SCORE2/SCORE2-OP, PCE/PREVENT (AHA 2023), statin primary prevention, aspirin (tidak rutin).
+- **Special populations**: lansia (frailty, Fried), wanita (HFpEF dominan), DM (HIIT vs MICT), HF reduced/preserved (HF-ACTION, ExDHF), PAD (supervised treadmill), pasca-LVAD/transplant (denervasi → HR tidak handal, pakai Borg).
+- **Cardiac Rehab Trials**: HF-ACTION, ETICA, EUROACTION, OMEGA-REMODEL, REHAB-HF (frail HF), CR-AMI meta-analisis (mortalitas ↓20–25%).
+- **Telerehab & Hybrid** (TELEREH-HF, TeleWat) pasca-COVID.
 
-**3. OSCE Skenario × 5** (~3200 kata, dialog 10-14 turn + rubrik 18-22 item)
-1. **AF baru terdiagnosis** pasca-stroke — CHA₂DS₂-VASc, DOAC pilihan, timing antikoagulan post-stroke (1-3-6-12 rule), rate vs rhythm.
-2. **Wide complex tachycardia** — Brugada/Vereckei algoritma, VT vs SVT-aberransi, manajemen akut & evaluasi struktural.
-3. **Syncope dengan suspect Brugada** — provokasi ajmaline, stratifikasi risiko (Shanghai score), ICD indikasi, family screening.
-4. **CRT non-responder** — evaluasi (lead position, AV/VV optimization, PVC burden, LBBAP upgrade), follow-up echo.
-5. **Storm VT pada ICD recipient** post-MI — sedasi, beta-blocker IV, amiodaron, sympathectomy, ablasi VT substrat.
+**3. OSCE Skenario × 5** (~3200 kata, dialog 10–14 turn + rubrik 18–22 item, skor 0–2)
+1. **Post-STEMI hari-5, akan pulang** — risk stratification AACVPR, resep latihan fase II, target LDL/BP/aktivitas, edukasi tanda bahaya, return-to-work & sexual activity counseling.
+2. **HFrEF EF 28% kandidat CR** — interpretasi CPET (VO₂ 12, VE/VCO₂ 38), preskripsi HIIT vs MICT (SMARTEX-HF), monitoring, indikasi rujukan transplant.
+3. **Post-CABG + DM2 + obesitas** — sternotomi precaution (8 minggu, 5–10 lb), HIIT pada DM, target HbA1c, GLP-1/SGLT2, depresi pasca-bedah (PHQ-9 12).
+4. **PAD klaudikasio Rutherford 3** — supervised exercise therapy (3×/minggu × 12 minggu, treadmill sampai near-max pain), cilostazol, smoking cessation, target ABI follow-up.
+5. **Pencegahan primer wanita 58 thn, hipertensi + dislipidemia** — SCORE2, ASCVD, statin moderate-intensity, gaya hidup, kalsium skor, terapi pengganti hormon (tidak untuk CV prevention), edukasi gejala atipik.
 
-**4. Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & rasional (mencakup ECG snippets dijelaskan teks).
+**4. Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & rasional (CPET cut-off, Karvonen formula, AACVPR risk, ESC LDL target, kontraindikasi CR, sternal precaution, denervasi transplant, dll.).
 
-**5. Cheat Sheet H-1** (~400 kata) — cut-off angka padat (CHA₂DS₂-VASc, QTc, Tpe, Brugada criteria, ablation success).
+**5. Cheat Sheet H-1** (~400 kata) — angka padat (LDL/BP/HbA1c target, VO₂ prognostic, VE/VCO₂ slope, 6MWT MCID, Borg, Karvonen, FITT-VP, sternal lifting limit, smoking pharmaco dosing).
 
 ### Quality Check
-- Word count 6500-7500.
-- Hindari Unicode subscript (gunakan H<sub>2</sub>O style untuk reportlab nanti).
-- Tidak rebuild PDF (PDF final setelah semua 9 station).
-- Tidak panggil AI gateway.
+- Word count 6500–7500.
+- Konsisten dengan Station 1 & 2: heading `##`/`###`, tabel markdown, tanpa Unicode subscript (gunakan `H<sub>2</sub>O`-style untuk konversi PDF nanti).
+- Tidak rebuild PDF (final setelah 9 station selesai).
+- Tidak panggil AI gateway (manual).
 
 ### Setelah Approve
-Langsung tulis file. Pesan akhir berisi: word count, ringkasan 5 skenario, instruksi balas **"lanjut"** untuk batch berikutnya (default: Intervensi/Cathlab, atau sebut station lain).
+Langsung tulis file `03_rehab_prevensi.md`. Pesan akhir: word count, ringkasan 5 skenario, prompt **"lanjut"** untuk Batch 4 (default berikutnya: Intervensi/Cathlab — atau sebut station lain: Imaging non-echo, Pediatrik/Kongenital, Vaskular, HF/Transplant, Emergensi/CICU, Klinik umum).
