@@ -1,51 +1,39 @@
-## Expand Manual — Batch 1: Station Echocardiography
+## Batch 2: Station Elektrofisiologi & Aritmia (Manual, ~6500-7500 kata)
 
-**Mode:** Manual writing (0 kredit AI), output ~6500-7500 kata.
+User mengubah urutan: skip dulu Intervensi, kerjakan **EP & Aritmia** sekarang.
 
-### Eksekusi Batch Ini
+### Output
+File baru: `/mnt/documents/stations_wip/02_ep_aritmia.md` (~7000 kata, 0 kredit AI).
 
-1. **Setup workspace persisten**
-   - Buat `/mnt/documents/stations_wip/` (persisten lintas sandbox reset)
-   - Copy panduan lama sebagai backup
+### Struktur Konten
 
-2. **Tulis Station 1: Echocardiography** → `/mnt/documents/stations_wip/01_echo.md`
-   
-   Struktur:
-   - **Scope & Blueprint** (~400 kata) — kompetensi PERKI/Konsil, weight, alat ujian
-   - **High-Yield Knowledge** (~1800 kata)
-     - Chamber quantification (LV mass, LA volume index, RV TAPSE/S')
-     - Sistolik LV: EF Simpson biplane, GLS, 3D
-     - Diastolik: algoritma ASE 2016 (E/A, e', E/e', LA vol, TR vel)
-     - Valvular: stenosis (PHT, continuity, DSE low-flow), regurgitasi (PISA, vena contracta, ERO)
-     - RV function & PH (TRV, PASP, PVR echo)
-     - Perikardial: tamponade vs konstriktif (annulus reversus, septal bounce)
-     - Stress echo protokol & interpretasi
-     - TEE views & indikasi (LAA thrombus, IE, prostetik)
-   - **OSCE Skenario × 5** (~3000 kata):
-     1. MS rematik untuk PMBV (Wilkins score lengkap, dialog 12 turn, rubrik 20 item)
-     2. AS severe low-flow low-gradient (DSE protokol, dialog, rubrik)
-     3. Functional MR vs primary MR (mekanisme Carpentier, dialog, rubrik)
-     4. HFpEF dengan diastolic dysfunction grade 2 (algoritma ASE, dialog, rubrik)
-     5. Suspect IE pada katup prostetik (TTE→TEE, dialog, rubrik)
-   - **Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & pembahasan
-   - **Cheat Sheet H-1** (~400 kata) — bullet padat angka cut-off
+**1. Scope & Blueprint** (~350 kata)
+- Kompetensi PERKI/Konsil EP, weight ujian, alat (ECG 12-lead, Holter, EPS report, device interrogation printout).
 
-3. **Verifikasi & Quality Check**
-   - Word count harus 6500-7500
-   - Cek tidak ada Unicode subscript (H₂O → H<sub>2</sub>O untuk reportlab nanti)
-   - Tampilkan ringkasan ke user
+**2. High-Yield Knowledge** (~2000 kata)
+- **Bradiaritmia & Pacing**: AV block klasifikasi, indikasi PPM (ESC 2021), CRT (LBBB ≥130 ms, EF ≤35%), HBP/LBBAP, mode pacing (DDD vs VVI, AAI-SafeR).
+- **SVT**: AVNRT (slow-fast/atypical), AVRT (WPW, antidromik), AT focal vs makro-reentry, manuver vagal, adenosin algoritma, ablation success rate.
+- **AF/AFL**: CHA₂DS₂-VASc, HAS-BLED, EHRA symptom, ABC pathway, rhythm vs rate (EAST-AFNET 4, CASTLE-AF, CABANA), DOAC dosing, LAA closure (Watchman).
+- **VT/VF**: ischemic vs non-ischemic, ARVC (Padua criteria), Brugada (tipe 1 spontan vs ajmaline), LQTS (Schwartz score, gen-spesifik), CPVT, idiopathic VT (RVOT, fascicular), storm management.
+- **ICD/Wearable**: primary vs secondary prevention, MADIT-II, DANISH, S-ICD vs TV-ICD, WCD (VEST trial).
+- **Sudden Cardiac Death**: screening atlet (Seattle/International criteria), genetik.
 
-### Yang TIDAK Dilakukan di Batch Ini
+**3. OSCE Skenario × 5** (~3200 kata, dialog 10-14 turn + rubrik 18-22 item)
+1. **AF baru terdiagnosis** pasca-stroke — CHA₂DS₂-VASc, DOAC pilihan, timing antikoagulan post-stroke (1-3-6-12 rule), rate vs rhythm.
+2. **Wide complex tachycardia** — Brugada/Vereckei algoritma, VT vs SVT-aberransi, manajemen akut & evaluasi struktural.
+3. **Syncope dengan suspect Brugada** — provokasi ajmaline, stratifikasi risiko (Shanghai score), ICD indikasi, family screening.
+4. **CRT non-responder** — evaluasi (lead position, AV/VV optimization, PVC burden, LBBAP upgrade), follow-up echo.
+5. **Storm VT pada ICD recipient** post-MI — sedasi, beta-blocker IV, amiodaron, sympathectomy, ablasi VT substrat.
 
-- Tidak rebuild PDF (PDF final hanya di-rebuild setelah semua 9 station selesai)
-- Tidak menyentuh station lain
-- Tidak panggil AI gateway
+**4. Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & rasional (mencakup ECG snippets dijelaskan teks).
 
-### Output Batch 1
+**5. Cheat Sheet H-1** (~400 kata) — cut-off angka padat (CHA₂DS₂-VASc, QTc, Tpe, Brugada criteria, ablation success).
 
-- File baru: `/mnt/documents/stations_wip/01_echo.md` (~7000 kata)
-- Pesan akhir berisi: konfirmasi word count, ringkasan 5 skenario yang ditulis, instruksi balas **"lanjut"** untuk Batch 2 (Intervensi).
+### Quality Check
+- Word count 6500-7500.
+- Hindari Unicode subscript (gunakan H<sub>2</sub>O style untuk reportlab nanti).
+- Tidak rebuild PDF (PDF final setelah semua 9 station).
+- Tidak panggil AI gateway.
 
 ### Setelah Approve
-
-Saya langsung mulai menulis Station 1 di pesan berikut. Tidak ada pertanyaan tambahan.
+Langsung tulis file. Pesan akhir berisi: word count, ringkasan 5 skenario, instruksi balas **"lanjut"** untuk batch berikutnya (default: Intervensi/Cathlab, atau sebut station lain).
