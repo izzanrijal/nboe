@@ -1,46 +1,66 @@
-## Batch 5: Station Vaskular (Manual, ~6500–7500 kata)
+# Plan: Template DOCX "Workbook Soal Ujian Board"
 
-Lanjut ke station default berikutnya: **Vaskular** (13 soal historis di rekap).
+## Tujuan
+Buat satu file `.docx` yang berfungsi sebagai **briefing form**. Anda isi field-fieldnya, copy seluruh isi ke chat, lalu saya generate soal OSCE/Oral Board lengkap (skenario + dialog + rubrik tilikan berbobot + answer key + cheat sheet) dengan format konsisten dengan Station 1–5 yang sudah dibuat.
 
-### Output
-File baru: `/mnt/documents/stations_wip/05_vaskular.md` (~7000 kata, **0 kredit AI**, ditulis manual). Tidak rebuild PDF (final setelah 9 station).
+## Lokasi Output
+`/mnt/documents/template_workbook_soal_board.docx` (~6–8 halaman)
 
-### Struktur Konten
+## Struktur Workbook (8 Bagian)
 
-**1. Scope & Blueprint** (~350 kata)
-- Kompetensi PERKI/ESVS/ESC vaskular: PAD, AAA, diseksi aorta, CVI, DVT/PE, carotid disease, vaskulitis, akut limb ischemia.
-- Alat: ABI/TBI, duplex arteri/vena, CTA, Wells score, Rutherford & Fontaine.
+**BAGIAN A — Identitas Station**
+- Nama station, kategori (Vaskular/HF/IACC/Pediatri/dll), level (PPDS-1/2/3/Konsultan), durasi total, reading time, exam mode (oral_board / panel_exam).
 
-**2. High-Yield Knowledge** (~2200 kata)
-- **PAD**: Fontaine I–IV, Rutherford 0–6, ABI cut-off (<0.9 PAD, <0.4 CLI, >1.4 non-compressible → TBI), TBI <0.7 abnormal, exercise ABI drop >20%.
-- **CLTI** (Chronic Limb-Threatening Ischemia): WIfI staging, GLASS classification, BASIL-2 & BEST-CLI.
-- **Akut Limb Ischemia**: Rutherford I/IIa/IIb/III, 6P, heparin bolus, terapi (kateter trombolisis vs trombektomi vs bypass), waktu emas 6 jam.
-- **AAA**: skrining USG (laki ≥65 perokok), threshold repair (≥5.5 cm pria, ≥5.0 cm wanita, growth >10 mm/tahun, simptomatik), EVAR vs open (EVAR-1, DREAM, OVER), ruptured AAA (Hardman index).
-- **Diseksi Aorta**: Stanford A/B, DeBakey I/II/III, klasifikasi TEM (uncomplicated/complicated/high-risk), target HR <60, SBP 100–120, esmolol/labetalol → vasodilator, IRAD data, TEVAR (INSTEAD-XL).
-- **Carotid**: NASCET/ECST, simptomatik ≥50% / asimptomatik ≥70% → CEA/CAS (CREST, ACST-2), tindakan dalam 14 hari pasca-TIA/stroke minor.
-- **DVT/PE**: Wells, D-dimer age-adjusted, DOAC vs warfarin, durasi (3 bulan provoked, ekstended unprovoked/cancer), IVC filter (PREPIC), trombolisis iliofemoral (ATTRACT, CAVA), PE risk (PESI/sPESI, ESC 2019/2024 algoritma high-/intermediate-/low-risk).
-- **CVI & Varises**: CEAP, Venous Clinical Severity Score, kompresi 20–30/30–40 mmHg, ablasi termal vs skleroterapi.
-- **Vaskulitis**: Takayasu (kriteria ACR), GCA (PMR, biopsi temporal, tocilizumab), Buerger (smoking).
-- **Renovaskular HTN, FMD, mesenteric ischemia** (akut & kronis).
-- **Lymphedema** dan diagnosis banding edema unilateral.
-- **Trial highlights**: VOYAGER-PAD (rivaroxaban + ASA), COMPASS, EUCLID, CLEVER, BASIL-2, BEST-CLI, ATTRACT, PEITHO, HI-PEITHO, CAPRIE.
+**BAGIAN B — Blueprint Kompetensi**
+- Domain kompetensi (Knowledge/Skill/Attitude), guideline acuan (ESC/AHA/PERKI tahun), referensi utama (textbook/trial), kata kunci high-yield (≤15 item).
 
-**3. OSCE Skenario × 5** (~3200 kata, dialog 10–14 turn + rubrik 18–22 item)
-1. **Klaudikasio Rutherford 3 dengan ABI 0.55** — interpretasi ABI/TBI, supervised exercise vs revaskularisasi, OMT (statin tinggi, antiplatelet, rivaroxaban dosis vaskular 2.5 mg BID), smoking cessation, follow-up.
-2. **Akut Limb Ischemia Rutherford IIa** — 6P, heparin loading, pencitraan CTA, pilihan kateter trombolisis vs operasi, kompartemen sindrom, post-revaskularisasi.
-3. **AAA infrarenal 5.8 cm asimptomatik** — surveillance vs repair, EVAR vs open, persiapan pre-op (kardiak risk, RCRI), follow-up endoleak (tipe I–V).
-4. **Diseksi Aorta Stanford B uncomplicated** — diagnosis (CTA), kontrol HR/BP (esmolol → nikardipin), kriteria komplikasi/high-risk → TEVAR, follow-up imaging.
-5. **DVT iliofemoral akut + suspek PE intermediate-high** — Wells, D-dimer, CTPA/echo, stratifikasi risiko PE (sPESI, RV strain, troponin), DOAC vs UFH + reperfusi, indikasi trombolisis sistemik, IVC filter, durasi antikoagulasi.
+**BAGIAN C — Konteks Klinis Inti** (boleh diisi bullet kasar — saya akan ekspansi)
+- Diagnosis utama + diagnosis banding wajib
+- Patofisiologi singkat (3–5 poin)
+- Red flags / pitfall
+- Pesan pembelajaran (take-home message) max 5
 
-**4. Bank Soal × 20** (~1200 kata) — MCQ + SAQ dengan kunci & rasional dari 13 soal historis (PAD, AAA, diseksi, DVT/PE, carotid) plus tambahan high-yield.
+**BAGIAN D — Skenario OSCE** (template untuk 1–5 skenario)
+Per skenario: judul, profil pasien (umur/jenis kelamin/komorbid), vital sign, hasil pemeriksaan (EKG/echo/lab/imaging — boleh narasi), pertanyaan inti penguji (3–6), tindakan/keputusan kunci yang diharapkan.
 
-**5. Cheat Sheet H-1** (~400 kata) — angka padat: ABI/TBI cut-off, AAA threshold, Stanford/DeBakey, Wells, sPESI, NASCET, Rutherford ALI, target HR/BP diseksi, dosis heparin/DOAC, durasi antikoagulasi.
+**BAGIAN E — Bobot Rubrik & Critical Actions**
+- Total poin (default 100)
+- Distribusi: Anamnesis %, Pemeriksaan %, Diagnosis %, Tatalaksana %, Komunikasi %
+- **Critical action** (auto-fail jika terlewat) — daftar 1–3 item
+- Passing score (default 70%)
 
-### Quality Check
-- Word count 6500–7500.
-- Konsisten dengan Station 1–4 (heading, tabel markdown, tanpa Unicode subscript).
-- Integrasi 13 soal historis dari `_soal_pool_by_station.json` (kategori vaskular).
-- Tidak panggil AI gateway.
+**BAGIAN F — Bank Soal Tambahan**
+- Jumlah MCQ/SAQ yang diinginkan (default 20)
+- Topik fokus tambahan untuk bank soal
+- Sertakan trial/landmark study? (Y/N + daftar)
 
-### Setelah Approve
-Tulis `05_vaskular.md`. Pesan akhir: word count, ringkasan 5 skenario, prompt **"lanjut"** untuk Batch 6 (default berikutnya: **HF/Transplant** — atau sebut station lain: Pediatri/Kongenital, Imaging non-echo, IACC/Klinik, Emergensi/CICU).
+**BAGIAN G — Output Preferensi**
+- Bahasa (Indonesia/Inggris/campur)
+- Panjang target (kata): default 6.500–7.500
+- Sertakan H-1 cheat sheet? (Y/N)
+- Sertakan tabel dosis obat? (Y/N)
+- Format file akhir (markdown only / + PDF / + import ke Excel uploader)
+
+**BAGIAN H — Soal Historis / Referensi Tambahan**
+- Free-text area: tempel soal historis, foto deskripsi, nomor halaman buku, link guideline.
+- Catatan khusus untuk AI (style penulisan, tone, hindari topik X, dll).
+
+## Fitur Visual DOCX
+- Font Arial 11pt, heading biru gelap (#1E3A5F konsisten dengan branding klinis)
+- Tabel terstruktur untuk Bagian A, D, E (mudah diisi di Word)
+- Checkbox "☐" untuk pilihan Y/N
+- Contoh terisi (italic abu-abu) di Bagian C dan D Skenario #1, sebagai panduan
+- Halaman terakhir: **"Cara Pakai"** — 4 langkah: (1) Isi semua field, (2) Select All + Copy, (3) Paste ke chat dengan prefix `Generate soal:`, (4) Tunggu AI rakit station lengkap.
+
+## Teknis Implementasi
+- Gunakan skill `docx` (docx-js via Node) — sudah tersedia.
+- Page US Letter, margin 1", style Heading1/2 di-override.
+- Validasi via `validate_document.py`, lalu QA: convert ke PDF + ambil screenshot tiap halaman untuk cek layout.
+- Tidak menyentuh codebase project.
+
+## Setelah Approve
+1. Tulis script Node generator di `/tmp/`.
+2. Generate `.docx` ke `/mnt/documents/`.
+3. QA: PDF + image preview tiap halaman, perbaiki bila ada overflow.
+4. Kirim `<lov-artifact>` agar bisa diunduh.
+5. Pesan akhir: ringkas isi 8 bagian + instruksi cara pakai singkat.
