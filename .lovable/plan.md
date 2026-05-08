@@ -1,66 +1,45 @@
-# Plan: Template DOCX "Workbook Soal Ujian Board"
+# Plan: Station 7 — Penyakit Jantung Kongenital (Pediatri & ACHD)
 
-## Tujuan
-Buat satu file `.docx` yang berfungsi sebagai **briefing form**. Anda isi field-fieldnya, copy seluruh isi ke chat, lalu saya generate soal OSCE/Oral Board lengkap (skenario + dialog + rubrik tilikan berbobot + answer key + cheat sheet) dengan format konsisten dengan Station 1–5 yang sudah dibuat.
+## Output
+File: `/mnt/documents/stations_wip/07_kongenital_achd.md` (~7.000–7.500 kata, 0 kredit AI — manual expand seperti station sebelumnya).
 
-## Lokasi Output
-`/mnt/documents/template_workbook_soal_board.docx` (~6–8 halaman)
+## Mengapa Topik Ini
+Berdasar progres sebelumnya, station 1–6 sudah selesai (Echo, EP/Aritmia, Rehab/Prevensi, Intervensi, Vaskular, HF/Transplant). Berikutnya secara default = **Kongenital/ACHD** (mengikuti rekomendasi yang sudah disepakati). Bila Anda mau station lain (CCU/IACC, ACLS, Karklin, Imaging non-echo), beri tahu — saya ganti.
 
-## Struktur Workbook (8 Bagian)
+## Struktur (mengikuti 02_ep_aritmia.md persis)
 
-**BAGIAN A — Identitas Station**
-- Nama station, kategori (Vaskular/HF/IACC/Pediatri/dll), level (PPDS-1/2/3/Konsultan), durasi total, reading time, exam mode (oral_board / panel_exam).
+1. **SCOPE & BLUEPRINT STATION** — posisi di ujian, kompetensi (ESC 2020 ACHD, AHA/ACC 2018 ACHD, ISHLT pediatric, PERKI), perangkat (echo PSAX/SC, CMR, kateterisasi hemodinamik, saturasi shunt run, kurva pertumbuhan, genetik 22q11), cara skoring.
+2. **HIGH-YIELD KNOWLEDGE**
+   - 2.1 Fisiologi shunt (Qp:Qs, PVR/SVR, Eisenmenger).
+   - 2.2 Lesi acyanotic: ASD, VSD, PDA, AVSD, CoA, AS/PS.
+   - 2.3 Lesi cyanotic: TOF, TGA (d-TGA & ccTGA), tricuspid atresia, TAPVR, truncus, Ebstein, HLHS.
+   - 2.4 Single-ventricle physiology & Fontan circulation (Fontan failure, PLE, plastic bronchitis).
+   - 2.5 Pulmonary hypertension pada CHD (klasifikasi Heath-Edwards, terapi target — bosentan/macitentan, sildenafil, riociguat, selexipag).
+   - 2.6 Aritmia pada ACHD (IART, sinus node dysfunction post-Mustard/Senning, sudden death post-TOF — QRS >180 ms).
+   - 2.7 Kehamilan pada ACHD (mWHO classification, kontraindikasi: Eisenmenger, severe AS, dilated aorta Marfan >45 mm).
+   - 2.8 Endocarditis prophylaxis (AHA 2021 update).
+3. **SKENARIO OSCE (5)** — tiap skenario: profil pasien, vital, data (echo/CMR/sat run), 4-6 pertanyaan penguji, dialog, rubrik 18-22 item × skala 0-2.
+   - Skenario 1: Bayi 3 bulan dengan VSD besar + gagal jantung → timing closure, manajemen medis (diuretik, ACE-i, nutrisi).
+   - Skenario 2: Dewasa muda dengan ASD secundum baru terdiagnosis → indikasi closure (perkutan vs bedah, RV dilatasi, Qp:Qs >1.5, PVR cut-off).
+   - Skenario 3: TOF post-repair dewasa dengan PR berat + RV dilatasi → indikasi PVR (PVRI/RVEDV cut-off CMR, transcatheter Melody/Harmony vs surgical).
+   - Skenario 4: Eisenmenger syndrome pada wanita usia 26 ingin hamil → konseling kontrasepsi, kontraindikasi kehamilan, terapi PAH (macitentan/sildenafil), risiko mortalitas maternal 30-50%.
+   - Skenario 5: Fontan failure dewasa 28 tahun → evaluasi (kateterisasi, hepatik, PLE), opsi (Fontan revision, mechanical support, transplant — heart vs combined heart-liver).
+4. **APPENDIX A–L**: Tabel klasifikasi mWHO, dosis obat PAH, cut-off CMR untuk PVR, tabel saturasi shunt, kurva mortalitas Fontan, daftar landmark trials (REHAB-TOF, INDICATOR, MAESTRO, SERAPHIN, AMBITION, MERIT, FUEL trial — udenafil Fontan), red flags, ringkasan **D-I-E-T-S** untuk 5 menit terakhir.
+5. **MCQ/SAQ Bank** 20 soal dengan kunci jawaban + penjelasan.
+6. **H-1 Cheat Sheet** — angka kunci (Qp:Qs, PVR Wood units, QRS >180 ms TOF, mWHO IV).
 
-**BAGIAN B — Blueprint Kompetensi**
-- Domain kompetensi (Knowledge/Skill/Attitude), guideline acuan (ESC/AHA/PERKI tahun), referensi utama (textbook/trial), kata kunci high-yield (≤15 item).
-
-**BAGIAN C — Konteks Klinis Inti** (boleh diisi bullet kasar — saya akan ekspansi)
-- Diagnosis utama + diagnosis banding wajib
-- Patofisiologi singkat (3–5 poin)
-- Red flags / pitfall
-- Pesan pembelajaran (take-home message) max 5
-
-**BAGIAN D — Skenario OSCE** (template untuk 1–5 skenario)
-Per skenario: judul, profil pasien (umur/jenis kelamin/komorbid), vital sign, hasil pemeriksaan (EKG/echo/lab/imaging — boleh narasi), pertanyaan inti penguji (3–6), tindakan/keputusan kunci yang diharapkan.
-
-**BAGIAN E — Bobot Rubrik & Critical Actions**
-- Total poin (default 100)
-- Distribusi: Anamnesis %, Pemeriksaan %, Diagnosis %, Tatalaksana %, Komunikasi %
-- **Critical action** (auto-fail jika terlewat) — daftar 1–3 item
-- Passing score (default 70%)
-
-**BAGIAN F — Bank Soal Tambahan**
-- Jumlah MCQ/SAQ yang diinginkan (default 20)
-- Topik fokus tambahan untuk bank soal
-- Sertakan trial/landmark study? (Y/N + daftar)
-
-**BAGIAN G — Output Preferensi**
-- Bahasa (Indonesia/Inggris/campur)
-- Panjang target (kata): default 6.500–7.500
-- Sertakan H-1 cheat sheet? (Y/N)
-- Sertakan tabel dosis obat? (Y/N)
-- Format file akhir (markdown only / + PDF / + import ke Excel uploader)
-
-**BAGIAN H — Soal Historis / Referensi Tambahan**
-- Free-text area: tempel soal historis, foto deskripsi, nomor halaman buku, link guideline.
-- Catatan khusus untuk AI (style penulisan, tone, hindari topik X, dll).
-
-## Fitur Visual DOCX
-- Font Arial 11pt, heading biru gelap (#1E3A5F konsisten dengan branding klinis)
-- Tabel terstruktur untuk Bagian A, D, E (mudah diisi di Word)
-- Checkbox "☐" untuk pilihan Y/N
-- Contoh terisi (italic abu-abu) di Bagian C dan D Skenario #1, sebagai panduan
-- Halaman terakhir: **"Cara Pakai"** — 4 langkah: (1) Isi semua field, (2) Select All + Copy, (3) Paste ke chat dengan prefix `Generate soal:`, (4) Tunggu AI rakit station lengkap.
-
-## Teknis Implementasi
-- Gunakan skill `docx` (docx-js via Node) — sudah tersedia.
-- Page US Letter, margin 1", style Heading1/2 di-override.
-- Validasi via `validate_document.py`, lalu QA: convert ke PDF + ambil screenshot tiap halaman untuk cek layout.
-- Tidak menyentuh codebase project.
+## Referensi yang Akan Dipakai
+- ESC 2020 Guidelines for the Management of Adult Congenital Heart Disease.
+- ESC 2022 Pulmonary Hypertension Guidelines.
+- AHA/ACC 2018 ACHD Guidelines.
+- ISHLT 2024 Pediatric Heart Transplant Update.
+- ESC 2018 Cardiovascular Disease in Pregnancy.
+- AHA 2021 Endocarditis Prophylaxis Update.
 
 ## Setelah Approve
-1. Tulis script Node generator di `/tmp/`.
-2. Generate `.docx` ke `/mnt/documents/`.
-3. QA: PDF + image preview tiap halaman, perbaiki bila ada overflow.
-4. Kirim `<lov-artifact>` agar bisa diunduh.
-5. Pesan akhir: ringkas isi 8 bagian + instruksi cara pakai singkat.
+- Tulis langsung ke `/mnt/documents/stations_wip/07_kongenital_achd.md`.
+- Verifikasi panjang (target 7.000+ kata) via `wc -w`.
+- Kirim `<lov-artifact>` agar bisa diunduh.
+- Tidak menyentuh codebase project.
+
+Balas **Approve** untuk lanjut, atau sebut topik lain bila bukan Kongenital/ACHD yang Anda inginkan.
