@@ -1,113 +1,63 @@
-# Revisi `template_workbook_soal_board.docx` — Workbook sebagai *Attachment Prompt* untuk Generate Excel
+# Station: 6-Minute Walk Test (6MWT) — CHF + CCS Post-PCI
 
-## Pemahaman ulang tujuan
+Saya sudah meriset ATS 2002, ERS/ATS 2014, ESC 2021 HF, ESC 2024 CCS, AACVPR 2024, dan PERKI 2019 (Panduan Rehabilitasi Kardiovaskular). Dari riset itu saya susun **1 station oral_board** yang siap di-import ke aplikasi (format Cases + Rubric, sesuai `ExcelImporter.tsx`).
 
-Alur yang user inginkan:
+## Output
 
-```
-Penyusun isi workbook (.docx)
-        ↓
-Workbook dilampirkan ke prompt AI (ChatGPT/Claude/Lovable AI)
-        ↓
-AI membaca workbook + instruksi di dalamnya
-        ↓
-AI menghasilkan file Excel (.xlsx) sesuai schema importer aplikasi
-        ↓
-Excel di-upload via Admin → Cases → Import Excel
-```
+File markdown station: `/mnt/documents/stations_wip/06_6mwt.md` + PDF `06_6mwt.pdf`.
+Struktur sama dengan station echo (Bab A–H), tapi inti yang akan jadi soal ujian = **Bab C: Skenario Ujian** (1 kasus tunggal, kompleks).
 
-Jadi workbook berfungsi **dua peran sekaligus**:
-1. **Form isian manusia** — mudah diisi penyusun soal (boleh narasi bebas, poin-poin, tabel kasar).
-2. **Spesifikasi teknis untuk AI** — berisi kontrak skema Excel yang harus dipatuhi AI saat konversi.
+## Skenario ujian (1 kasus, oral_board)
 
-## Schema target (sumber: `src/components/admin/ExcelImporter.tsx`)
+**Title:** `6MWT — CHF Post-PCI (Tn. S, 62 th)`
+**Mode:** `oral_board` · **Reading:** 180 dtk · **Time limit:** 600 dtk (10 menit; peragaan + hitung + edukasi padat)
+**Show results:** FALSE
 
-File Excel hasil generate harus berisi 2 sheet:
+**Initial prompt (vignette):**
+Tn. S, 62 th, dirujuk ke poli rehabilitasi kardiovaskular untuk Phase II CR. Riwayat: STEMI anterior 6 minggu lalu → primary PCI LAD (DES, TIMI 3). Echo terbaru EF 38% (HFrEF), tanpa LV thrombus. NYHA II, CCS I. Obat: bisoprolol 2.5 mg, ramipril 5 mg, spironolakton 25 mg, dapagliflozin 10 mg, atorvastatin 40 mg, aspirin 80 mg, tikagrelor 2×90 mg. Tidak ada angina sejak PCI. BB 72 kg, TB 168 cm. TD 118/72, HR 64, SpO₂ 98%, Borg dyspnea 0. EKG: sinus, Q patologis V1–V3, tanpa ST deviasi. Pasien akan menjalani **6MWT** sebagai baseline sebelum exercise prescription.
 
-**Sheet `Cases`** — header baris 1, data mulai baris 2:
-| Kolom | Tipe | Catatan |
-|---|---|---|
-| `title` | string | Wajib unik; jadi kunci join ke Rubric |
-| `exam_mode` | enum | `oral_board` atau `panel_exam` |
-| `initial_prompt` | longtext | Vignette pasien untuk reading phase |
-| `questions_text` | longtext | Daftar pertanyaan penguji (multi-line: pakai line break dalam cell) |
-| `answer_key_text` | longtext | Kunci jawaban (admin-only, masuk ke `case_answer_keys`) |
-| `reading_time_seconds` | int | Default 120 |
-| `time_limit_seconds` | int | Default 360 |
-| `show_results_to_candidate` | bool | `TRUE` / `FALSE` |
+**Questions text (5 tugas, kandidat menjawab mandiri, tanpa tanya-jawab):**
+1. Jelaskan **persiapan 6MWT** secara profesional di depan pasien (indikasi/kontraindikasi yg di-screen, lingkungan & alat, persiapan pasien, baseline yg diukur, kriteria stop).
+2. **Peragakan prosedur 6MWT** sesuai standar ATS 2002 — termasuk instruksi pembuka verbatim, *standardized encouragement phrases* tiap menit, dan penutupan tes.
+3. **Hitung VO₂peak dan METs** pasien bila 6MWD = **280 m**. Tampilkan rumus, angka, % prediksi (Enright–Sherrill), dan interpretasi klinis.
+4. Susun **exercise prescription FITT-VP** untuk pasien ini (aerobik + resistance + flexibility) berdasarkan hasil 6MWT, ESC 2021 HF, ESC 2024 CCS, AACVPR 2024 dan PERKI 2019.
+5. Berikan **edukasi komprehensif** pasien CHF + post-PCI: kepatuhan DAPT & HF-GDMT, warning signs stop exercise, sick-day rules, monitoring BB harian & restriksi cairan/garam, diet, seksual, kembali kerja/menyetir, vaksinasi, faktor risiko, follow-up.
 
-**Sheet `Rubric`** — banyak baris per kasus:
-| Kolom | Tipe | Catatan |
-|---|---|---|
-| `case_title` | string | Harus identik dengan `title` di Cases |
-| `item_text` | string | Butir tilikan |
-| `points` | number | Bobot |
-| `is_critical` | bool | `TRUE` / `FALSE` |
+**Answer key (model jawaban, ringkas tapi lengkap):**
+- Kontraindikasi absolut: UA / MI dalam 1 bulan terakhir; relatif: HR >120, TDS ≥180/TDD >100, AV block tinggi, HOCM, LM disease. Pasien ini: 6 minggu post-PCI, stabil, NYHA II → **boleh**.
+- Lingkungan: koridor lurus datar 30 m, dua cone, kursi, stopwatch, lap counter, sfigmo, pulse oksimetri, skala Borg, O₂ + nitrat rescue + AED standby.
+- Persiapan pasien: baju & sepatu nyaman, makan ringan ≥2 jam sebelumnya, **lanjutkan obat termasuk β-blocker**, hindari latihan berat 2 jam sebelumnya, **tanpa warm-up**, duduk istirahat 10 menit; catat baseline TD, HR, SpO₂, Borg dyspnea & fatigue.
+- Instruksi ATS verbatim ("The object of this test is to walk as far as possible for 6 minutes…", encouragement tiap menit: "You are doing well. You have 5 minutes to go" dst.), boleh berhenti & melanjutkan, tidak berbicara dengan pasien selain frasa baku.
+- Hitungan:
+  - Cahalin/Ross: **VO₂peak = 0.03 × 280 + 3.98 = 12.38 mL/kg/min**
+  - METs = 12.38 / 3.5 ≈ **3.5 METs**
+  - Kecepatan 280 m / 6 min ≈ 46.7 m/min ≈ 2.8 km/jam
+  - Prediksi Enright–Sherrill pria: 7.57·TB(cm) − 5.02·umur − 1.76·BB − 309 = 7.57·168 − 5.02·62 − 1.76·72 − 309 = **+ ~336 m** (LLN ≈ −153 m). 280 m = **~83% prediksi** → kapasitas fungsional sedang–rendah, konsisten HFrEF NYHA II.
+- FITT-VP: F 3–5×/mg, I 40–70% HRR (atau 50–80% VO₂peak / Borg RPE 11–13 awal → 14), T 20–30 → 45–60 min, Type treadmill/sepeda + resistance 2×/mg 8–10 grup otot 30–70% 1RM, flex 5×/mg, **warm-up 10' & cool-down 10'**, progresi setelah 2–4 minggu; HR target ≈ HRrest + 40–60% (HRpeak−HRrest); pertimbangkan HIIT setelah 4–6 mg bila stabil (ESC 2021).
+- Edukasi: DAPT 12 bln jangan dihentikan tanpa konsultasi, statin seumur hidup, target LDL <55 mg/dL, GDMT 4-pilar wajib, timbang BB harian (alarm Δ ≥2 kg/3 hari), garam <5 g/hr, cairan 1.5–2 L/hr bila kongestif, stop latihan bila chest pain/dispnea ekstrem/pusing/palpitasi, sick-day rule (tunda olahraga jika demam/diare), aktivitas seksual aman ≈3–5 METs (setara naik 2 lantai tanpa gejala), kembali kerja ringan 2–4 mg, menyetir komersial sesuai regulasi, vaksin influenza & pneumokokus, berhenti rokok mutlak, manajemen DM/HT/dislipidemia, follow-up 2–4 minggu.
 
-Aset (gambar EKG, echo, audio, dsb.) **tidak** masuk Excel — di-upload manual setelah import via tombol Upload pada baris kasus (`AssetUploader`).
+**Rubric (≥18 item, binary, ditandai is_critical):**
+Mencakup: skrining kontraindikasi (C), alat & koridor 30 m (C), baseline vital + Borg (C), instruksi ATS verbatim (C), encouragement standar tiap menit, kriteria stop (C), pencatatan 6MWD & post-vital, rumus VO₂ benar (C), METs benar (C), % prediksi Enright, FITT lengkap (C), warm-up/cool-down, target intensitas aman utk HFrEF (C), resistance + flexibility, DAPT tdk dihentikan (C), GDMT 4-pilar, BB harian + Δ2kg (C), restriksi garam/cairan, warning signs (C), sick-day, aktivitas seksual METs, vaksinasi, berhenti rokok, follow-up.
 
-## Struktur workbook baru
+## Media yang perlu Anda siapkan & attach nanti (via Admin → AssetUploader)
 
-### Halaman 1 — INSTRUKSI UNTUK AI (wajib, diletakkan paling depan)
+| # | File | Kategori | Trigger keyword | Catatan |
+|---|---|---|---|---|
+| 1 | `6mwt_corridor_diagram.png` | `case_media` | `persiapan`, `koridor`, `prosedur` | Skema koridor 30 m + 2 cone + kursi |
+| 2 | `ekg_post_pci_anterior.png` | `case_media` | `ekg` | Sinus 64, Q V1–V3, tanpa ST deviasi |
+| 3 | `echo_hfref_ef38.jpg` | `examination` | `echo`, `ef` | Apical 4-chamber, EF 38%, hipokinetik anterior |
+| 4 | `borg_scale.png` | `additional_info` | `borg`, `dispnea` | Skala Borg CR10 dyspnea + RPE 6–20 |
+| 5 | `enright_sherrill_table.png` | `additional_info` | `prediksi`, `enright` | Tabel rumus pria/wanita |
+| 6 | `med_list.pdf` (opsional) | `additional_info` | `obat`, `medikasi` | Daftar obat saat ini |
+| 7 | `cr_phase_protocol.png` (opsional) | `additional_info` | `rehabilitasi`, `fase` | Skema Phase I–IV PERKI |
 
-Blok teks tegas yang berfungsi sebagai *meta-prompt*. Penyusun cukup menulis: *"Generate Excel sesuai instruksi di halaman 1 dokumen terlampir"* dan AI akan tahu apa yang harus dilakukan. Isi blok:
+Aset 1–5 **wajib**; 6–7 opsional. Tidak diunggah lewat Excel — diunggah manual setelah import (sesuai alur aplikasi).
 
-- Peran: "Anda adalah konverter. Tugas Anda mengubah workbook ini menjadi satu file Excel `.xlsx`."
-- Schema persis 2 sheet di atas, termasuk nama kolom (case-sensitive, snake_case), tipe, default, dan enum.
-- Aturan ketat:
-  - Output **hanya** file `.xlsx`, tanpa narasi tambahan.
-  - Nama kolom **persis** seperti spesifikasi (huruf kecil, underscore).
-  - `case_title` di Rubric **identik** dengan `title` di Cases (case-sensitive, trim spasi).
-  - Multi-line cell: pakai line break dalam cell (Alt+Enter equivalent / `\n`), bukan baris baru di Excel.
-  - `exam_mode` hanya boleh `oral_board` atau `panel_exam`.
-  - Boolean ditulis `TRUE`/`FALSE` (huruf besar).
-  - Jika field opsional kosong, isi default (reading 120, time_limit 360, show_results FALSE).
-  - Jika satu workbook berisi banyak kasus → satu baris per kasus di Cases, banyak baris di Rubric.
-  - Aset tidak dimasukkan ke Excel; cukup pertahankan di lampiran terpisah.
-- Contoh output mini (2 baris Cases, 4 baris Rubric) sebagai *few-shot reference*.
+## Langkah eksekusi (saat di-approve)
 
-### Halaman 2 dst. — FORM ISIAN PENYUSUN (per kasus, ulangi blok untuk multi-kasus)
+1. Tulis `/mnt/documents/stations_wip/06_6mwt.md` lengkap Bab A–H (Scope, Knowledge Base ESC/ATS/PERKI dengan sitasi, Skenario di atas, MCQ Bank 8 soal, Cheat Sheet 1 halaman, Pitfall, Trial, Lampiran daftar media).
+2. Render ke PDF via pipeline HTML→LibreOffice (sama spt station echo).
+3. QA tiap halaman PDF; perbaiki bila ada tabel terpotong.
+4. Tidak menyentuh kode aplikasi.
 
-Format **bebas tapi terstruktur** — penyusun boleh menulis narasi panjang; AI yang akan memadatkan/memformat saat konversi.
-
-**Blok A — Identitas Kasus**
-- Judul kasus
-- Mode ujian (oral_board / panel_exam) — beri penjelasan singkat tiap pilihan
-- Reading time (default 120 dtk)
-- Time limit aktif (default 360 dtk)
-- Tampilkan hasil ke kandidat? (Ya/Tidak)
-
-**Blok B — Vignette / Initial Prompt**
-Kotak teks bebas. Anjuran isi: identitas pasien, keluhan utama, riwayat singkat, vital sign awal. Akan dipetakan ke `initial_prompt`.
-
-**Blok C — Pertanyaan Penguji**
-Daftar bernomor (boleh ditulis bebas). Akan dipetakan ke `questions_text`.
-
-**Blok D — Kunci Jawaban**
-Struktur anjuran: Diagnosis Utama, DD, Pemeriksaan Penunjang, Tatalaksana, Edukasi, Prognosis. Akan dipetakan ke `answer_key_text`.
-
-**Blok E — Rubrik Tilikan**
-Tabel 3 kolom: butir tilikan | bobot | kritis (Ya/Tidak). Anjuran 10–20 item. Akan dipetakan ke sheet `Rubric` dengan `case_title` = judul Blok A.
-
-**Blok F — Catatan Aset (tidak masuk Excel)**
-Daftar lampiran yang nanti di-upload manual: nama file/deskripsi, kategori (case_media / examination / additional_info), trigger keywords bila kondisional. Murni dokumentasi untuk penyusun — AI diinstruksikan **mengabaikan** blok ini saat membuat Excel.
-
-### Halaman akhir — Checklist Pra-Konversi
-Daftar centang singkat: judul tiap kasus unik, mode valid, rubrik ≥ 5 item, tidak ada baris kosong, semua field wajib terisi.
-
-## Implementasi teknis
-
-- Tools: skill `docx` (`docx-js` via Node).
-- File output: overwrite `/mnt/documents/template_workbook_soal_board.docx`.
-- Font Arial, US Letter, margin 1", heading bertingkat.
-- Blok "INSTRUKSI UNTUK AI" diberi shading mencolok (mis. background kuning lembut `FFF4CC`) agar penyusun tidak mengeditnya.
-- Sediakan 3 blok kasus kosong sebagai contoh (penyusun bisa duplikasi halaman untuk tambah).
-- Tambahkan satu contoh kasus terisi (mini-vignette + 5 rubrik) di bagian akhir sebagai referensi gaya.
-- Setelah generate: validasi via `validate_document.py`, lalu QA dengan render PDF → image semua halaman.
-- Tidak menyentuh kode aplikasi; hanya artefak dokumen.
-
-## Hasil akhir
-
-Satu file `template_workbook_soal_board.docx` di `/mnt/documents/` yang:
-- Bisa diisi penyusun soal dalam gaya naratif (cepat, manusiawi).
-- Begitu dilampirkan ke prompt AI, AI punya semua yang dibutuhkan untuk menghasilkan `.xlsx` valid yang langsung lolos importer aplikasi tanpa revisi manual.
+Approve untuk saya eksekusi?
