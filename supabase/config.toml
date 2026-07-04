@@ -11,3 +11,7 @@ verify_jwt = false
 
 [functions.keep-alive]
 verify_jwt = false
+
+[functions.ingest-case]
+verify_jwt = false
+
