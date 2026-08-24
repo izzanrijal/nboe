@@ -92,7 +92,12 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         const { error } = await supabase.from("clinical_cases").update(casePayload).eq("id", existingCase.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from("clinical_cases").insert(casePayload).select("id").single();
+        const { data: authData } = await supabase.auth.getUser();
+        const { data, error } = await supabase
+          .from("clinical_cases")
+          .insert({ ...casePayload, created_by: authData.user?.id ?? null })
+          .select("id")
+          .single();
         if (error) throw error;
         caseId = data.id;
       }
