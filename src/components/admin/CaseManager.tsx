@@ -127,15 +127,23 @@ const CaseManager = () => {
                   <TableCell>{c.time_limit_seconds}</TableCell>
                   <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : (Array.isArray(c.checklist_rubric?.items) ? c.checklist_rubric.items.length : 0)}</TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(c)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canManage(c) ? (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
+                          <Upload className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(c)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Eye className="h-3.5 w-3.5" /> Hanya lihat
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
