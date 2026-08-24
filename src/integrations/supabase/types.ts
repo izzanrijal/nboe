@@ -400,6 +400,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_master_admin: { Args: { _user_id: string }; Returns: boolean }
+      owns_case: {
+        Args: { _case_id: string; _user_id: string }
+        Returns: boolean
+      }
       regenerate_station_session: {
         Args: { _case_id: string; _new_token: string }
         Returns: {

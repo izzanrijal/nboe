@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Eye } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import CaseForm from "./CaseForm";
 import AssetUploader from "./AssetUploader";
 import ExcelImporter from "./ExcelImporter";
@@ -22,6 +23,7 @@ interface ClinicalCase {
   questions_text: string;
   answer_key_text: string;
   show_results_to_candidate: boolean;
+  created_by?: string | null;
 }
 
 const CaseManager = () => {
@@ -31,6 +33,10 @@ const CaseManager = () => {
   const [showImporter, setShowImporter] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isMasterAdmin } = useAuth();
+
+  const canManage = (c: ClinicalCase) =>
+    isMasterAdmin || (!!c.created_by && c.created_by === user?.id);
 
   const { data: cases = [], isLoading } = useQuery({
     queryKey: ["clinical_cases"],
@@ -127,15 +133,23 @@ const CaseManager = () => {
                   <TableCell>{c.time_limit_seconds}</TableCell>
                   <TableCell>{Array.isArray(c.checklist_rubric) ? c.checklist_rubric.length : (Array.isArray(c.checklist_rubric?.items) ? c.checklist_rubric.items.length : 0)}</TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(c)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canManage(c) ? (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => setAssetCaseId(c.id)}>
+                          <Upload className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(c)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Eye className="h-3.5 w-3.5" /> Hanya lihat
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
