@@ -2,11 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+const MASTER_ADMIN_EMAIL = "izzan.rijal@gmail.com";
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
+  isMasterAdmin: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -15,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   isAdmin: false,
+  isMasterAdmin: false,
   signOut: async () => {},
 });
 
@@ -25,6 +29,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  const isMasterAdmin =
+    (user?.email ?? "").toLowerCase() === MASTER_ADMIN_EMAIL;
 
   const checkAdminRole = async (userId: string) => {
     const { data } = await supabase
