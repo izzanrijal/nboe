@@ -23,6 +23,7 @@ interface ClinicalCase {
   questions_text: string;
   answer_key_text: string;
   show_results_to_candidate: boolean;
+  created_by?: string | null;
 }
 
 const CaseManager = () => {
@@ -32,6 +33,10 @@ const CaseManager = () => {
   const [showImporter, setShowImporter] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isMasterAdmin } = useAuth();
+
+  const canManage = (c: ClinicalCase) =>
+    isMasterAdmin || (!!c.created_by && c.created_by === user?.id);
 
   const { data: cases = [], isLoading } = useQuery({
     queryKey: ["clinical_cases"],
