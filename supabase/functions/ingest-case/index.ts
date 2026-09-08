@@ -30,7 +30,12 @@ const BodySchema = z.object({
   initial_prompt: z.string().min(400),
   questions_text: z.string().min(300),
   answer_key_text: z.string().min(800),
-  checklist_rubric: z.object({ items: z.array(RubricItem).min(15) }),
+  // Rubrik bersifat opsional: bila dikirim harus ≥15 butir utuh (checklist);
+  // bila tidak dikirim / items kosong → soal "tanpa daftar tilik" (rubric_mode=none),
+  // penilaian murni berdasarkan answer key. Kiriman parsial (1–14 butir) ditolak.
+  checklist_rubric: z
+    .object({ items: z.array(RubricItem).min(0).max(100) })
+    .optional(),
   media_notes: z.array(MediaNote).default([]),
   created_by_email: z.string().email().optional(),
 });
@@ -47,7 +52,7 @@ const SCHEMA_DOC = {
     initial_prompt: "string >=400 chars; must contain >=3 of RIWAYAT/PEMERIKSAAN/TUGAS/EKG/LAB",
     questions_text: "string >=300 chars; >=5 numbered tasks; must NOT reveal rubric items",
     answer_key_text: "string >=800 chars; expected candidate verbalisation, numbers, thresholds",
-    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — >=15 items, >=8 critical, total points >=40",
+    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — OPSIONAL. Bila dikirim: >=15 items, >=8 critical, total points >=40 → rubric_mode='checklist'. Bila dikosongkan/tidak dikirim → rubric_mode='none' (tanpa daftar tilik, penilaian berbasis answer key)",
     media_notes: "[{ description, category: case_media|examination|additional_info, trigger_keywords: [] }] — informational only, media uploaded manually",
     created_by_email: "optional admin email to own the case",
   },
@@ -55,8 +60,9 @@ const SCHEMA_DOC = {
     "initial_prompt >= 400 chars and >=3 section markers",
     "questions_text >= 300 chars and >=5 numbered tasks",
     "answer_key_text >= 800 chars",
-    "rubric >= 15 items, >= 8 isCritical:true, total points >= 40",
+    "checklist_rubric OPTIONAL: bila dikirim harus >=15 items, >=8 isCritical:true, total points >=40; bila kosong/tidak dikirim -> rubric_mode=none (tanpa daftar tilik)",
     "title must be unique (409 otherwise)",
+    "inserted as status=draft (menunggu review admin); source=agent_api",
   ],
   responses: { 200: "created", 400: "validation", 401: "bad token", 409: "duplicate title", 500: "server error" },
 };
@@ -114,14 +120,25 @@ Deno.serve(async (req) => {
     return json(400, { error: "questions_text must contain at least 5 numbered tasks (1., 2., ...)" });
   }
 
-  const items = data.checklist_rubric.items;
+  const items = data.checklist_rubric?.items ?? [];
+  const rubricMode = items.length > 0 ? "checklist" : "none";
   const criticalCount = items.filter((i) => i.isCritical).length;
   const totalPoints = items.reduce((s, i) => s + i.points, 0);
-  if (criticalCount < 8) {
-    return json(400, { error: `At least 8 rubric items must be isCritical:true (got ${criticalCount})` });
+
+  // Gerbang mutu rubrik HANYA berlaku bila pengirim memakai daftar tilik.
+  // Kiriman parsial (1–14 butir) = menengah, tolak agar tidak ambigu.
+  if (items.length > 0 && items.length < 15) {
+    return json(400, {
+      error: `Rubrik parsial tidak didukung: ${items.length} butir. Kirim ≥15 butir (checklist) atau kosongkan untuk penilaian tanpa daftar tilik (rubric_mode=none).`,
+    });
   }
-  if (totalPoints < 40) {
-    return json(400, { error: `Rubric total points must be >= 40 (got ${totalPoints})` });
+  if (items.length >= 15) {
+    if (criticalCount < 8) {
+      return json(400, { error: `At least 8 rubric items must be isCritical:true (got ${criticalCount})` });
+    }
+    if (totalPoints < 40) {
+      return json(400, { error: `Rubric total points must be >= 40 (got ${totalPoints})` });
+    }
   }
 
   const supabase = createClient(
@@ -149,7 +166,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (owner) createdBy = owner.id;
 
-  const rubric = { enabled: true, items };
+  const rubric = { enabled: items.length > 0, items };
 
   const { data: inserted, error: insErr } = await supabase
     .from("clinical_cases")
@@ -164,6 +181,10 @@ Deno.serve(async (req) => {
       answer_key_text: data.answer_key_text,
       checklist_rubric: rubric,
       created_by: createdBy,
+      // Workflow: kiriman agent selalu DRAFT sampai di-review admin
+      status: "draft",
+      source: "agent_api",
+      rubric_mode: rubricMode,
     })
     .select("id, title")
     .single();
@@ -188,6 +209,9 @@ Deno.serve(async (req) => {
     exam_mode: data.exam_mode,
     reading_time_seconds: readingSeconds,
     time_limit_seconds: limitSeconds,
+    status: "draft", // menunggu review admin di halaman admin
+    source: "agent_api",
+    rubric_mode: rubricMode,
     rubric_items: items.length,
     critical_items: criticalCount,
     total_points: totalPoints,
