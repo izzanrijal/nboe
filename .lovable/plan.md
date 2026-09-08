@@ -1,89 +1,45 @@
-# Plan: AI Agent → DB Case Ingestion
+# Plan: Endpoint & Skill untuk AI Agent Input Soal
 
-Tujuan: AI agent eksternal (Hermes / OpenClaw / Claude Code) bisa mem-POST soal baru langsung ke database Supabase melalui satu endpoint terjaga, dengan format yang **wajib** komprehensif seperti kualitas soal 6MWT / DUS Karotis / ABPM yang sudah ada.
+Tujuan: satu endpoint aman + satu file SKILL.md siap-download yang bisa saya berikan ke AI agent (Hermes / OpenClaw / Claude Code) supaya mereka bisa mengirim soal baru yang lengkap langsung ke aplikasi.
 
-## 1. Endpoint: Edge Function `ingest-case`
+## 1. Upgrade endpoint `ingest-case`
 
-File baru: `supabase/functions/ingest-case/index.ts`
-Config: `verify_jwt = false` (auth pakai API key sendiri).
+Endpoint sudah ada (`POST /functions/v1/ingest-case`, validasi header `X-Agent-Api-Key` terhadap secret `CASE_INGEST_API_KEY`). Yang ditambahkan:
 
-**URL**: `https://nowebjmwrtkspvdwgevj.supabase.co/functions/v1/ingest-case`
+- **Waktu dalam menit**: terima `reading_time_minutes` dan `time_limit_minutes` (lebih natural untuk agent), tetap menerima versi `_seconds` untuk kompatibilitas. Konversi ke detik saat insert.
+- **Kunci jawaban tersinkron**: selain isi `answer_key_text` di `clinical_cases`, otomatis tulis juga ke `case_answer_keys` supaya penilaian AI langsung aktif (seperti soal-soal yang sudah ada).
+- **Rubrik aktif**: simpan `checklist_rubric` sebagai `{ enabled: true, items: [...] }` supaya daftar tilik langsung menyala.
+- **Catatan media**: terima `media_notes[]` (deskripsi + kategori + trigger keywords). Media tidak diupload otomatis; daftar ini dikembalikan di response supaya penguji tahu apa yang perlu diupload manual.
+- **Kepemilikan**: isi `created_by` dengan admin master (opsional field `created_by_email`) agar soal muncul rapi di Case Manager.
+- **Endpoint bantu**: `GET /functions/v1/ingest-case` (dengan API key) mengembalikan skema JSON + contoh, supaya agent bisa self-check tanpa dokumen.
 
-**Auth**: header `X-Agent-Api-Key: <CASE_INGEST_API_KEY>` — secret baru yang saya generate & simpan di Supabase Secrets. Tanpa key valid → 401.
+Gerbang kualitas dipertahankan dan disebutkan eksplisit di error message: panjang minimum vignette/tugas/kunci jawaban, minimal 5 tugas bernomor, minimal 15 butir rubrik, minimal 8 butir kritis, total poin ≥ 40, judul unik (409 kalau duplikat).
 
-**Method**: `POST` JSON.
+Kode respons: 200 sukses, 400 validasi, 401 token salah, 409 duplikat, 500 error server.
 
-**Request body (validasi ketat via Zod)**:
-```json
-{
-  "title": "string (wajib, format: '<TOPIK> — <Skenario Singkat> (<Inisial>, <umur> th)')",
-  "exam_mode": "oral_board" | "osce",
-  "reading_time_seconds": 180,
-  "time_limit_seconds": 600,
-  "show_results_to_candidate": false,
-  "initial_prompt": "string (skenario pasien lengkap: riwayat, PF, penunjang, tugas)",
-  "questions_text": "string (daftar tugas bernomor)",
-  "answer_key_text": "string (model answer lengkap per tugas)",
-  "checklist_rubric": {
-    "items": [
-      { "text": "string", "points": 1-5, "isCritical": true|false }
-    ]
-  }
-}
-```
+## 2. File SKILL.md untuk didownload
 
-**Validasi minimum kualitas** (400 kalau gagal — biar AI agent nggak nge-push soal sampah):
-- `initial_prompt` ≥ 400 karakter & mengandung minimal 3 dari: `RIWAYAT`, `PEMERIKSAAN`, `TUGAS`, `EKG`, `Lab`.
-- `questions_text` ≥ 300 karakter & mengandung minimal 5 nomor tugas (`1.` … `5.`).
-- `answer_key_text` ≥ 800 karakter.
-- `checklist_rubric.items` ≥ 15 item; minimal 8 `isCritical:true`; total points ≥ 40.
-- Title unik (cek `SELECT 1 FROM clinical_cases WHERE title = ?`) → 409 kalau duplikat.
+Buat `/mnt/documents/agent_skills/nboe-case-author/SKILL.md` (plus referensi & contoh) berisi:
 
-**Response 200**:
-```json
-{ "id": "<uuid>", "title": "...", "rubric_items": 22, "total_points": 62 }
-```
+- Kapan skill dipakai, dan aturan mutlak: soal harus setara kualitas ujian asli (contoh: 6MWT, DUS Karotis, ABPM, RHC anak).
+- Struktur wajib satu soal: judul, mode ujian, menit baca, menit ujian, vignette pasien lengkap (riwayat, pemeriksaan fisis, penunjang), daftar tugas bernomor (6 tugas standar), kunci jawaban naratif berisi perkiraan verbalisasi benar peserta, dan rubrik daftar tilik biner dengan poin + tanda kritis.
+- Aturan penting: tugas **tidak boleh membocorkan** isi rubrik — peserta menyusun urutan sendiri.
+- Cara kirim: contoh `curl` lengkap + variabel token, contoh body JSON penuh (satu contoh soal jadi), dan daftar error umum beserta cara memperbaikinya.
+- Catatan media: agent hanya membuat daftar media yang perlu diupload manual + trigger keywords.
+- Cara pasang di Claude Code / Hermes / OpenClaw.
 
-**Error**: 400 (validasi), 401 (key salah), 409 (duplikat), 500 (DB error) — dengan pesan spesifik supaya agent bisa self-correct.
+File yang sama juga diperbarui di skill internal proyek agar tetap sinkron. Semuanya dibundel jadi satu file ZIP di `/mnt/documents` supaya mudah didownload dan diberikan ke agent.
 
-Handler pakai `SUPABASE_SERVICE_ROLE_KEY` untuk insert bypass RLS. CORS enabled. Log ringkas (title + jumlah item) ke console.
+## 3. Yang tidak diubah
+- Tidak ada tabel baru, tidak ada perubahan RLS.
+- Upload media tetap manual lewat Asset Uploader.
+- UI admin tidak diubah.
 
-## 2. Secret baru
-Saya generate `CASE_INGEST_API_KEY` (random 48-char) via secrets tool dan tampilkan sekali di chat supaya kamu bisa kasih ke agent.
-
-## 3. Skill lengkap untuk AI agent
-
-Buat direktori skill: `.agents/skills/nboe-case-author/`
-- `SKILL.md` — instruksi kapan dipicu ("saat user minta buat soal ujian jantung / OSCE / oral board untuk platform NBOE"), workflow riset (ESC guidelines / Perki), struktur soal, checklist kualitas, cara call endpoint via `curl`, contoh full body.
-- `references/format-spec.md` — spec detail tiap field, konvensi penomoran tugas (6 tugas standar: Perkenalan → Prosedur/Indikasi → Consent → Persiapan → Instruksi/Peragaan → Interpretasi/Edukasi), aturan rubric (points 1-5, kapan `isCritical`), gaya bahasa Indonesia klinis + sitasi guideline.
-- `references/quality-checklist.md` — checklist wajib sebelum submit (min items, coverage indikasi ≥5, kontraindikasi, angka spesifik/threshold, edukasi komprehensif).
-- `references/media-hints.md` — cara AI agent memberi tahu user media apa yang harus di-upload manual (agent TIDAK boleh upload media; hanya list kebutuhan + trigger keywords).
-- `scripts/submit_case.sh` — helper script `curl` yang baca JSON dari file dan POST ke endpoint. Baca API key dari env `CASE_INGEST_API_KEY`.
-- `assets/example_case.json` — contoh soal lengkap (mengacu ABPM) sebagai template.
-
-Skill akan di-apply via `skills--apply_draft` supaya aktif di workspace.
-
-## 4. Dokumentasi cara distribusi ke Hermes / OpenClaw / Claude Code
-Di akhir SKILL.md ada bagian "Distribution":
-- Copy folder `.agents/skills/nboe-case-author/` ke direktori skills agent target.
-- Set env `CASE_INGEST_API_KEY` di environment agent.
-- Untuk Claude Code: taruh di `~/.claude/skills/` atau project `.claude/skills/`.
-- Untuk Hermes / OpenClaw: instruksikan sistem prompt untuk mengikuti `SKILL.md`.
-
-## 5. Yang TIDAK termasuk (agar scope tetap fokus)
-- Tidak menambah upload media otomatis — media tetap manual via `AssetUploader` (sesuai memory constraint).
-- Tidak mengubah UI admin.
-- Tidak menambah tabel baru — insert langsung ke `clinical_cases` yang sudah ada.
-- Tidak ada perubahan RLS.
-
-## Technical summary
+## Ringkasan teknis
 | Item | Detail |
 |---|---|
-| Endpoint | `POST /functions/v1/ingest-case` |
-| Auth | Header `X-Agent-Api-Key` vs `CASE_INGEST_API_KEY` secret |
-| DB write | `service_role` insert ke `public.clinical_cases` |
-| Validasi | Zod + custom quality gates (length, item count, uniqueness) |
-| Skill path | `.agents/skills/nboe-case-author/` |
-| Aktivasi skill | `skills--apply_draft` |
-
-Approve untuk saya lanjut build?
+| Endpoint | `POST/GET /functions/v1/ingest-case` |
+| Auth | Header `X-Agent-Api-Key` = secret `CASE_INGEST_API_KEY` |
+| Tabel tujuan | `clinical_cases` + `case_answer_keys` (service role) |
+| Field waktu | `reading_time_minutes`, `time_limit_minutes` (fallback `_seconds`) |
+| Deliverable | `/mnt/documents/agent_skills/nboe-case-author/` + ZIP |
