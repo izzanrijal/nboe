@@ -24,9 +24,28 @@ const SessionManager = () => {
   const { data: cases = [] } = useQuery({
     queryKey: ["clinical_cases"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clinical_cases").select("id, title").order("created_at", { ascending: false });
+      // Fetch all fields with source and status for filtering/preview
+      const { data, error } = await supabase
+        .from("clinical_cases")
+        .select("*")
+        .eq("status", "published") // ONLY publishable cases
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      
+      // Merge with case_answer_keys for complete data
+      const { data: answerKeys } = await supabase
+        .from("case_answer_keys")
+        .select("case_id, answer_key_text, checklist_rubric");
+      
+      const akMap = new Map(
+        (answerKeys || []).map((ak: any) => [ak.case_id, ak])
+      );
+      
+      return (data || []).map((c: any) => ({
+        ...c,
+        answer_key_text: c.answer_key_text || akMap.get(c.id)?.answer_key_text,
+        checklist_rubric: c.checklist_rubric || akMap.get(c.id)?.checklist_rubric,
+      }));
     },
   });
 
