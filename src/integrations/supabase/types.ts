@@ -130,15 +130,14 @@ export type Database = {
           initial_prompt: string
           questions_text: string
           reading_time_seconds: number
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rubric_mode: string
           show_results_to_candidate: boolean
+          source: string
+          status: string
           time_limit_seconds: number
           title: string
-          status?: string // draft, published, rejected
-          source?: string // admin, agent_api
-          rubric_mode?: string // checklist, none
-          reviewed_by?: string | null
-          reviewed_at?: string | null
-          workflow_status?: string
         }
         Insert: {
           answer_key_text?: string
@@ -150,15 +149,14 @@ export type Database = {
           initial_prompt?: string
           questions_text?: string
           reading_time_seconds?: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rubric_mode?: string
           show_results_to_candidate?: boolean
+          source?: string
+          status?: string
           time_limit_seconds?: number
           title: string
-          status?: "draft" | "published" | "rejected"
-          source?: "admin" | "agent_api"
-          rubric_mode?: "checklist" | "none"
-          reviewed_by?: string | null
-          reviewed_at?: string | null
-          workflow_status?: string
         }
         Update: {
           answer_key_text?: string
@@ -170,17 +168,24 @@ export type Database = {
           initial_prompt?: string
           questions_text?: string
           reading_time_seconds?: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rubric_mode?: string
           show_results_to_candidate?: boolean
+          source?: string
+          status?: string
           time_limit_seconds?: number
           title?: string
-          status?: "draft" | "published" | "rejected"
-          source?: "admin" | "agent_api"
-          rubric_mode?: "checklist" | "none"
-          reviewed_by?: string | null
-          reviewed_at?: string | null
-          workflow_status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clinical_cases_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       exam_results: {
         Row: {
