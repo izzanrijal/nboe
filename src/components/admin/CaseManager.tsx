@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Eye, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,6 +37,7 @@ const CaseManager = () => {
   const [showForm, setShowForm] = useState(false);
   const [assetCaseId, setAssetCaseId] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
+  const [examGroup, setExamGroup] = useState("oral_board");
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isMasterAdmin } = useAuth();
@@ -105,6 +107,8 @@ const CaseManager = () => {
     setEditingCase(null);
   };
 
+  const filteredCases = cases.filter((clinicalCase) => clinicalCase.exam_mode === examGroup);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -119,10 +123,18 @@ const CaseManager = () => {
         </div>
       </CardHeader>
       <CardContent>
+        <Tabs value={examGroup} onValueChange={setExamGroup} className="mb-5">
+          <TabsList>
+            <TabsTrigger value="oral_board">Oral Board</TabsTrigger>
+            <TabsTrigger value="panel_exam">Panel</TabsTrigger>
+          </TabsList>
+        </Tabs>
         {isLoading ? (
           <p className="text-muted-foreground">Loading...</p>
-        ) : cases.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">No clinical cases yet. Create your first one.</p>
+        ) : filteredCases.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">
+            Belum ada soal {examGroup === "oral_board" ? "Oral Board" : "Panel"}.
+          </p>
         ) : (
           <Table>
             <TableHeader>
@@ -136,7 +148,7 @@ const CaseManager = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {cases.map((c) => (
+              {filteredCases.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.title}</TableCell>
                   <TableCell>
