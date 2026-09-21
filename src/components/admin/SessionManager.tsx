@@ -13,13 +13,25 @@ import StationDeployResults from "@/components/admin/StationDeployResults";
 import CaseTransferList from "@/components/admin/CaseTransferList";
 import DeployedStationsTable from "@/components/admin/DeployedStationsTable";
 
-const SessionManager = () => {
-  const [selectedCases, setSelectedCases] = useState<{ id: string; title: string }[]>([]);
+interface SessionManagerProps {
+  examMode: string;
+}
+
+const SessionManager = ({ examMode }: SessionManagerProps) => {
+  const [selectedCasesByMode, setSelectedCasesByMode] = useState<Record<string, { id: string; title: string }[]>>({
+    oral_board: [],
+    panel_exam: [],
+  });
   const [pcCount, setPcCount] = useState(1);
   const [deployedTokens, setDeployedTokens] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const selectedCases = selectedCasesByMode[examMode] ?? [];
+  const modeLabel = examMode === "oral_board" ? "Oral Board" : "Panel";
+  const setSelectedCases = (nextCases: { id: string; title: string }[]) => {
+    setSelectedCasesByMode((current) => ({ ...current, [examMode]: nextCases }));
+  };
 
   const { data: cases = [] } = useQuery({
     queryKey: ["clinical_cases"],
@@ -48,6 +60,8 @@ const SessionManager = () => {
       }));
     },
   });
+
+  const casesForMode = cases.filter((clinicalCase: any) => clinicalCase.exam_mode === examMode);
 
   const deployMutation = useMutation({
     mutationFn: async () => {
@@ -100,12 +114,12 @@ const SessionManager = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Rocket className="h-5 w-5" />
-            Deploy Station
+            Deploy Session {modeLabel}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <CaseTransferList
-            cases={cases}
+            cases={casesForMode}
             selectedCases={selectedCases}
             onSelectedCasesChange={setSelectedCases}
           />
@@ -160,13 +174,13 @@ const SessionManager = () => {
             className="w-full sm:w-auto"
           >
             <Rocket className="h-4 w-4 mr-2" />
-            Deploy {pcCount > 1 ? `${pcCount} Station` : "Station"}
+            Deploy {pcCount > 1 ? `${pcCount} Session ${modeLabel}` : `Session ${modeLabel}`}
             {selectedCases.length > 1 ? ` (${selectedCases.length} ujian)` : ""}
           </Button>
         </CardContent>
       </Card>
 
-      <DeployedStationsTable />
+      <DeployedStationsTable examMode={examMode} />
 
       <Dialog open={showResults} onOpenChange={setShowResults}>
         <DialogContent className="max-w-md">
