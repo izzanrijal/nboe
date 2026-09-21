@@ -208,7 +208,7 @@ const CasePreview = () => {
       const answerKeyPayload: Database["public"]["Tables"]["case_answer_keys"]["Insert"] = {
         case_id: id,
         answer_key_text: answerKeyText,
-        checklist_rubric: { enabled: rubricData.enabled, items: rubricData.items } as Json,
+        checklist_rubric: { enabled: rubricData.enabled, items: rubricData.items } as unknown as Json,
       };
       const { error: akErr } = await supabase
         .from("case_answer_keys")
