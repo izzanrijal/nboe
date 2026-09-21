@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -204,14 +205,14 @@ const CasePreview = () => {
       if (error) throw error;
 
       // Sinkron ke tabel kunci jawaban
-      const { error: akErr } = await supabase.from("case_answer_keys").upsert(
-        {
-          case_id: id,
-          answer_key_text: answerKeyText,
-          checklist_rubric: { enabled: rubricData.enabled, items: rubricData.items },
-        },
-        { onConflict: "case_id" }
-      );
+      const answerKeyPayload: Database["public"]["Tables"]["case_answer_keys"]["Insert"] = {
+        case_id: id,
+        answer_key_text: answerKeyText,
+        checklist_rubric: { enabled: rubricData.enabled, items: rubricData.items } as unknown as Json,
+      };
+      const { error: akErr } = await supabase
+        .from("case_answer_keys")
+        .upsert(answerKeyPayload, { onConflict: "case_id" });
       if (akErr) throw akErr;
     },
     onSuccess: (_data, action) => {
