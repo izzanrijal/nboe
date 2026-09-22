@@ -53,16 +53,55 @@ const ExamActiveView = ({
   onForceClose,
   onComplete,
 }: ExamActiveViewProps) => {
-  const { isRecording, start, stop } = useMediaRecorder();
+  const { isRecording, chunkCount, recordedBytes, error: recorderError, start, stop } = useMediaRecorder();
+  const { level, hasRecentSound } = useAudioLevel(audioStream);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const completingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCase, setShowCase] = useState(true);
+  const [isLastCase, setIsLastCase] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState("");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Mark session active so the display screen follows along
+  useEffect(() => {
+    supabase
+      .from("exam_sessions")
+      .update({ status: "active" })
+      .eq("id", sessionId)
+      .then(({ error }) => {
+        if (error) console.warn("Failed to mark session active:", error);
+      });
+  }, [sessionId]);
+
+  // Determine if this is the last case of a sequence (label on the end button)
+  useEffect(() => {
+    const checkSequence = async () => {
+      const { data: session } = await supabase
+        .from("exam_sessions")
+        .select("station_token")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (!session?.station_token) return;
+
+      const { data: items } = await supabase
+        .from("exam_sequence_items")
+        .select("sequence_order, session_id")
+        .eq("station_token", session.station_token)
+        .order("sequence_order", { ascending: true });
+
+      if (!items || items.length <= 1) return;
+      const current = items.find((i) => i.session_id === sessionId);
+      if (!current) return;
+      setIsLastCase(!items.some((i) => i.sequence_order > current.sequence_order));
+    };
+    checkSequence();
+  }, [sessionId]);
 
   // Start recording + join channel
   useEffect(() => {
@@ -85,6 +124,49 @@ const ExamActiveView = ({
       supabase.removeChannel(channel);
     };
   }, [sessionId, audioStream, start]);
+
+  // Live speech-to-text preview (browser) — confirms the voice is being captured.
+  // The authoritative transcript is produced server-side from the recording.
+  useEffect(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    let stopped = false;
+    let recognition: any;
+    try {
+      recognition = new SR();
+      recognition.lang = "id-ID";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event: any) => {
+        let text = "";
+        for (let i = 0; i < event.results.length; i++) {
+          text += event.results[i][0].transcript + " ";
+        }
+        setLiveTranscript(text.trim().slice(-600));
+      };
+      recognition.onend = () => {
+        if (!stopped) {
+          try {
+            recognition.start();
+          } catch {
+            /* ignore restart race */
+          }
+        }
+      };
+      recognition.start();
+    } catch (err) {
+      console.warn("Live speech-to-text unavailable:", err);
+    }
+    return () => {
+      stopped = true;
+      try {
+        recognition?.stop();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
 
 
   // Save chat message to database (fire-and-forget)
