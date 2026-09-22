@@ -102,7 +102,18 @@ const ExamMobile = () => {
         if (error) {
           console.error("Failed to start exam timer:", error);
         } else if (data) {
-          now = data as string;
+          const serverStart = new Date(data as string).getTime();
+          const elapsed = (Date.now() - serverStart) / 1000;
+          // Guard against a stale start time (e.g. sequential stations) that would
+          // make the timer expire instantly.
+          if (Number.isFinite(serverStart) && elapsed < info.timeLimitSeconds) {
+            now = data as string;
+          } else {
+            await supabase
+              .from("exam_sessions")
+              .update({ session_start_time: now })
+              .eq("id", sessionId);
+          }
         }
       }
 
@@ -132,9 +143,11 @@ const ExamMobile = () => {
         time_limit_seconds: info.timeLimitSeconds,
       });
       setStep("active");
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
     },
     [sessionId, audioStream]
   );
+
 
   if (loading || !user) {
     return (
