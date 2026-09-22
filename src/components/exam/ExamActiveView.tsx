@@ -241,23 +241,51 @@ const ExamActiveView = ({
   const completeExam = useCallback(async () => {
     if (completingRef.current) return;
     completingRef.current = true;
+    setSubmitting(true);
+
+    const submitResult = async (fileName: string | null) => {
+      const { data, error } = await supabase
+        .from("exam_results")
+        .insert({
+          session_id: sessionId,
+          candidate_id: candidateId,
+          audio_file_url: fileName,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        console.error("Result insert error:", error);
+        return;
+      }
+
+      // Kick off transcription + AI grading (voice-to-text) without blocking the candidate
+      if (data?.id && fileName) {
+        supabase.functions
+          .invoke("evaluate-exam", { body: { result_id: data.id } })
+          .then(({ error: evalError }) => {
+            if (evalError) console.warn("Auto evaluation failed:", evalError);
+          });
+      }
+    };
 
     try {
       let fileName: string | null = null;
       const blob = await stop();
 
       if (blob && blob.size > 0) {
-        fileName = `${sessionId}_${candidateId}_${Date.now()}.webm`;
+        const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+        fileName = `${sessionId}_${candidateId}_${Date.now()}.${extension}`;
         const { error: uploadError } = await supabase.storage
           .from("exam-audio")
-          .upload(fileName, blob, { contentType: "audio/webm" });
+          .upload(fileName, blob, { contentType: blob.type || "audio/webm" });
         if (uploadError) {
           console.error("Upload error:", uploadError);
           toast.error("Gagal mengunggah rekaman audio. Mencoba ulang...");
           // Retry once
           const { error: retryError } = await supabase.storage
             .from("exam-audio")
-            .upload(fileName, blob, { contentType: "audio/webm", upsert: true });
+            .upload(fileName, blob, { contentType: blob.type || "audio/webm", upsert: true });
           if (retryError) {
             console.error("Retry upload error:", retryError);
             fileName = null;
@@ -270,22 +298,14 @@ const ExamActiveView = ({
         toast.error("Peringatan: Rekaman audio tidak tersedia.");
       }
 
-      await supabase.from("exam_results").insert({
-        session_id: sessionId,
-        candidate_id: candidateId,
-        audio_file_url: fileName,
-      });
+      await submitResult(fileName);
       await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
       onComplete();
     } catch (err) {
       console.error("Completion error:", err);
       // Still try to mark complete even on error
       try {
-        await supabase.from("exam_results").insert({
-          session_id: sessionId,
-          candidate_id: candidateId,
-          audio_file_url: null,
-        });
+        await submitResult(null);
         await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
       } catch (innerErr) {
         console.error("Fallback completion error:", innerErr);
@@ -293,6 +313,8 @@ const ExamActiveView = ({
       onComplete();
     }
   }, [sessionId, candidateId, stop, onComplete]);
+
+  const endLabel = isLastCase ? "Akhiri Ujian" : "Akhiri Soal";
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -306,33 +328,75 @@ const ExamActiveView = ({
         />
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="sm">
-              <LogOut className="h-4 w-4 mr-1" />
-              Selesai
+            <Button variant="destructive" size="sm" disabled={submitting}>
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4 mr-1" />
+              )}
+              {endLabel}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Akhiri Ujian?</AlertDialogTitle>
+              <AlertDialogTitle>{endLabel}?</AlertDialogTitle>
               <AlertDialogDescription>
-                Apakah Anda yakin ingin mengakhiri ujian? Jawaban dan rekaman audio Anda akan disubmit untuk dinilai.
+                {isLastCase
+                  ? "Apakah Anda yakin ingin mengakhiri ujian? Jawaban dan rekaman audio Anda akan disubmit untuk dinilai."
+                  : "Jawaban dan rekaman soal ini akan disubmit. Setelah itu Anda dapat melanjutkan ke soal berikutnya."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Kembali</AlertDialogCancel>
-              <AlertDialogAction onClick={completeExam}>Ya, Akhiri Ujian</AlertDialogAction>
+              <AlertDialogAction onClick={completeExam}>Ya, {endLabel}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </div>
 
-      {/* Recording indicator */}
-      <div className="flex items-center justify-center gap-2 py-1.5 bg-destructive/10">
-        <Mic className="h-3.5 w-3.5 text-destructive animate-pulse" />
-        <span className="text-xs text-destructive font-medium">
-          {isRecording ? "Recording" : "Starting..."}
-        </span>
+      {/* Recording indicator with live microphone level */}
+      <div
+        className={`flex flex-col gap-1 px-4 py-2 ${
+          isRecording && hasRecentSound ? "bg-destructive/10" : "bg-muted"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {isRecording ? (
+            <Mic className="h-3.5 w-3.5 text-destructive animate-pulse" />
+          ) : (
+            <MicOff className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <span
+            className={`text-xs font-medium ${
+              isRecording ? "text-destructive" : "text-muted-foreground"
+            }`}
+          >
+            {recorderError
+              ? recorderError
+              : isRecording
+              ? hasRecentSound
+                ? "Merekam — suara terdeteksi"
+                : "Merekam — suara tidak terdeteksi, bicara lebih dekat ke mikrofon"
+              : "Menyiapkan rekaman..."}
+          </span>
+          <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+            {chunkCount > 0 ? `${Math.round(recordedBytes / 1024)} KB tersimpan` : "0 KB"}
+          </span>
+        </div>
+        {/* Live input level meter */}
+        <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+          <div
+            className="h-full bg-destructive transition-all duration-100"
+            style={{ width: `${Math.max(2, level)}%` }}
+          />
+        </div>
+        {liveTranscript && (
+          <p className="text-[10px] text-muted-foreground line-clamp-2">
+            Terdengar: {liveTranscript}
+          </p>
+        )}
       </div>
+
 
       {/* Monitor focus banner */}
       <div className="flex items-center justify-center gap-2 py-2 px-4 bg-primary/10 border-b border-primary/20">
