@@ -458,7 +458,7 @@ const CasePreview = () => {
                     <Input
                       id="readingTime"
                       type="number"
-                      min={30}
+                      min={5}
                       max={900}
                       value={readingTimeSeconds}
                       onChange={(e) => setReadingTimeSeconds(Number(e.target.value))}
@@ -470,7 +470,7 @@ const CasePreview = () => {
                     <Input
                       id="time"
                       type="number"
-                      min={120}
+                      min={30}
                       max={1800}
                       value={timeLimitSeconds}
                       onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
