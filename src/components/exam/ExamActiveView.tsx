@@ -3,10 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
+import useAudioLevel from "@/hooks/useAudioLevel";
 
 import { toast } from "sonner";
-import { Mic, Monitor, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
+import { Mic, MicOff, Monitor, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
 import {
   AlertDialog,
   AlertDialogAction,
