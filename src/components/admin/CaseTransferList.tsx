@@ -13,9 +13,17 @@ interface CaseTransferListProps {
   cases: CaseItem[];
   selectedCases: CaseItem[];
   onSelectedCasesChange: (cases: CaseItem[]) => void;
+  emptyStateMessage?: string;
+  disabled?: boolean;
 }
 
-const CaseTransferList = ({ cases, selectedCases, onSelectedCasesChange }: CaseTransferListProps) => {
+const CaseTransferList = ({
+  cases,
+  selectedCases,
+  onSelectedCasesChange,
+  emptyStateMessage,
+  disabled = false,
+}: CaseTransferListProps) => {
   const [search, setSearch] = useState("");
 
   const availableCases = cases.filter(
@@ -52,18 +60,24 @@ const CaseTransferList = ({ cases, selectedCases, onSelectedCasesChange }: CaseT
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
+            disabled={disabled}
           />
         </div>
         <div className="border border-border rounded-md max-h-56 overflow-y-auto">
           {availableCases.length === 0 ? (
             <p className="text-muted-foreground text-sm p-3 text-center">
-              {cases.length === 0 ? "Belum ada case." : "Tidak ditemukan."}
+              {cases.length === 0
+                ? emptyStateMessage ?? "Belum ada case."
+                : search.trim()
+                  ? "Tidak ditemukan."
+                  : "Semua case tersedia sudah dipilih."}
             </p>
           ) : (
             availableCases.map((c) => (
               <button
                 key={c.id}
                 onClick={() => addCase(c)}
+                disabled={disabled}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted/50 transition-colors border-b border-border last:border-0"
               >
                 <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />

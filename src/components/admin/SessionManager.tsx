@@ -1,22 +1,72 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateBookingCode } from "@/lib/bookingCode";
+import {
+  getDeploymentValidationError,
+  getExcludedCaseIds,
+  type CompletedCaseHistory,
+} from "@/lib/deploymentEligibility";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Rocket, Copy, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Search, Plus, Monitor } from "lucide-react";
+import { Rocket, Monitor } from "lucide-react";
 import StationDeployResults, { type DeployedStationToken } from "@/components/admin/StationDeployResults";
 import CaseTransferList from "@/components/admin/CaseTransferList";
 import DeployedStationsTable from "@/components/admin/DeployedStationsTable";
+import DeploymentParticipantSelector from "@/components/admin/DeploymentParticipantSelector";
 
 interface SessionManagerProps {
   examMode: string;
 }
+
+const loadCompletedCaseHistory = async (
+  participantIds: string[],
+): Promise<CompletedCaseHistory[]> => {
+  const { data: results, error: resultsError } = await supabase
+    .from("exam_results")
+    .select("candidate_id, session_id")
+    .in("candidate_id", participantIds);
+  if (resultsError) throw resultsError;
+  if (!results?.length) return [];
+
+  const sessionIds = [...new Set(results.map((result) => result.session_id))];
+  const { data: sessions, error: sessionsError } = await supabase
+    .from("exam_sessions")
+    .select("id, case_id")
+    .in("id", sessionIds);
+  if (sessionsError) throw sessionsError;
+  if (!sessions?.length) return [];
+
+  const caseIds = [...new Set(sessions.map((session) => session.case_id))];
+  const { data: clinicalCases, error: casesError } = await supabase
+    .from("clinical_cases")
+    .select("id, exam_mode")
+    .in("id", caseIds);
+  if (casesError) throw casesError;
+
+  const caseIdBySessionId = new Map(
+    sessions.map((session) => [session.id, session.case_id]),
+  );
+  const examModeByCaseId = new Map(
+    (clinicalCases ?? []).map((clinicalCase) => [clinicalCase.id, clinicalCase.exam_mode]),
+  );
+
+  return results.flatMap((result) => {
+    const caseId = caseIdBySessionId.get(result.session_id);
+    const completedExamMode = caseId ? examModeByCaseId.get(caseId) : undefined;
+    if (!caseId || !completedExamMode) return [];
+
+    return [{
+      candidateId: result.candidate_id,
+      caseId,
+      examMode: completedExamMode,
+    }];
+  });
+};
 
 const SessionManager = ({ examMode }: SessionManagerProps) => {
   const [selectedCasesByMode, setSelectedCasesByMode] = useState<Record<string, { id: string; title: string }[]>>({
@@ -24,16 +74,60 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
     panel_exam: [],
   });
   const [pcCount, setPcCount] = useState(1);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [showResultsToCandidateOverride, setShowResultsToCandidateOverride] = useState(false);
   const [deployedStations, setDeployedStations] = useState<DeployedStationToken[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const selectedCases = selectedCasesByMode[examMode] ?? [];
+  const selectedCases = useMemo(
+    () => selectedCasesByMode[examMode] ?? [],
+    [examMode, selectedCasesByMode],
+  );
   const modeLabel = examMode === "oral_board" ? "Oral Board" : "Panel";
   const setSelectedCases = (nextCases: { id: string; title: string }[]) => {
     setSelectedCasesByMode((current) => ({ ...current, [examMode]: nextCases }));
   };
+
+  const {
+    data: candidates = [],
+    isLoading: candidatesLoading,
+    error: candidatesError,
+  } = useQuery({
+    queryKey: ["deployment_candidate_profiles"],
+    queryFn: async () => {
+      const { data: roles, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "candidate");
+      if (rolesError) throw rolesError;
+      if (!roles?.length) return [];
+
+      const candidateIds = [...new Set(roles.map((role) => role.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, nim")
+        .in("id", candidateIds)
+        .order("full_name");
+      if (profilesError) throw profilesError;
+
+      return profiles ?? [];
+    },
+  });
+
+  const historyQueryParticipantIds = useMemo(
+    () => [...selectedParticipantIds].sort(),
+    [selectedParticipantIds],
+  );
+  const {
+    data: completedCaseHistory,
+    isFetching: historyFetching,
+    error: historyError,
+  } = useQuery({
+    queryKey: ["deployment_completed_case_history", historyQueryParticipantIds],
+    queryFn: () => loadCompletedCaseHistory(historyQueryParticipantIds),
+    enabled: historyQueryParticipantIds.length > 0,
+  });
 
   const { data: cases = [] } = useQuery({
     queryKey: ["clinical_cases"],
@@ -52,23 +146,70 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
         .select("case_id, answer_key_text, checklist_rubric");
       
       const akMap = new Map(
-        (answerKeys || []).map((ak: any) => [ak.case_id, ak])
+        (answerKeys || []).map((answerKey) => [answerKey.case_id, answerKey])
       );
       
-      return (data || []).map((c: any) => ({
-        ...c,
-        answer_key_text: c.answer_key_text || akMap.get(c.id)?.answer_key_text,
-        checklist_rubric: c.checklist_rubric || akMap.get(c.id)?.checklist_rubric,
+      return (data || []).map((clinicalCase) => ({
+        ...clinicalCase,
+        answer_key_text: clinicalCase.answer_key_text || akMap.get(clinicalCase.id)?.answer_key_text,
+        checklist_rubric: clinicalCase.checklist_rubric || akMap.get(clinicalCase.id)?.checklist_rubric,
       }));
     },
   });
 
-  const casesForMode = cases.filter((clinicalCase: any) => clinicalCase.exam_mode === examMode);
+  const casesForMode = cases.filter((clinicalCase) => clinicalCase.exam_mode === examMode);
+  const excludedCaseIds = useMemo(
+    () => getExcludedCaseIds(completedCaseHistory ?? [], selectedParticipantIds, examMode),
+    [completedCaseHistory, examMode, selectedParticipantIds],
+  );
+  const historyLoading = selectedParticipantIds.length > 0 &&
+    (completedCaseHistory === undefined || historyFetching);
+  const historyUnavailable = selectedParticipantIds.length > 0 && Boolean(historyError);
+  const eligibleCases = historyUnavailable ||
+    (selectedParticipantIds.length > 0 && completedCaseHistory === undefined)
+    ? []
+    : casesForMode.filter((clinicalCase) => !excludedCaseIds.has(clinicalCase.id));
+
+  useEffect(() => {
+    if (historyLoading || historyUnavailable || excludedCaseIds.size === 0) return;
+
+    const removedCases = selectedCases.filter((clinicalCase) =>
+      excludedCaseIds.has(clinicalCase.id),
+    );
+    if (removedCases.length === 0) return;
+
+    setSelectedCasesByMode((current) => ({
+      ...current,
+      [examMode]: (current[examMode] ?? []).filter(
+        (clinicalCase) => !excludedCaseIds.has(clinicalCase.id),
+      ),
+    }));
+    toast({
+      title: "Pilihan case diperbarui",
+      description: `${removedCases.length} case dihapus karena sudah pernah diselesaikan oleh peserta terpilih.`,
+    });
+  }, [examMode, excludedCaseIds, historyLoading, historyUnavailable, selectedCases, toast]);
+
+  const casePickerEmptyMessage = historyUnavailable
+    ? "Riwayat peserta gagal dimuat. Coba muat ulang halaman."
+    : historyLoading
+      ? "Memuat riwayat case peserta..."
+      : selectedParticipantIds.length > 0 && casesForMode.length > 0 && eligibleCases.length === 0
+        ? `Semua case ${modeLabel} sudah pernah diselesaikan oleh peserta terpilih.`
+        : `Belum ada case ${modeLabel} yang dipublikasikan.`;
 
   const deployMutation = useMutation({
     mutationFn: async () => {
-      if (selectedCases.length === 0) throw new Error("Pilih minimal satu case");
-      if (pcCount < 1 || pcCount > 50) throw new Error("Jumlah PC harus 1-50");
+      if (historyLoading) throw new Error("Tunggu hingga riwayat peserta selesai dimuat");
+      if (historyUnavailable) throw new Error("Riwayat peserta gagal dimuat. Deploy dibatalkan");
+
+      const validationError = getDeploymentValidationError({
+        participantIds: selectedParticipantIds,
+        caseIds: selectedCases.map((clinicalCase) => clinicalCase.id),
+        pcCount,
+        excludedCaseIds,
+      });
+      if (validationError) throw new Error(validationError);
 
       const deployed: DeployedStationToken[] = [];
       const batchTokens = new Set<string>();
@@ -150,10 +291,20 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <DeploymentParticipantSelector
+            candidates={candidates}
+            selectedParticipantIds={selectedParticipantIds}
+            onSelectedParticipantIdsChange={setSelectedParticipantIds}
+            isLoading={candidatesLoading}
+            errorMessage={candidatesError ? "Daftar peserta gagal dimuat." : undefined}
+          />
+
           <CaseTransferList
-            cases={casesForMode}
+            cases={eligibleCases}
             selectedCases={selectedCases}
             onSelectedCasesChange={setSelectedCases}
+            emptyStateMessage={casePickerEmptyMessage}
+            disabled={historyLoading || historyUnavailable}
           />
 
           {selectedCases.length > 0 && (
@@ -227,7 +378,13 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
 
           <Button
             onClick={() => deployMutation.mutate()}
-            disabled={selectedCases.length === 0 || deployMutation.isPending || pcCount < 1}
+            disabled={
+              selectedCases.length === 0 ||
+              deployMutation.isPending ||
+              pcCount < 1 ||
+              historyLoading ||
+              historyUnavailable
+            }
             className="w-full sm:w-auto"
           >
             <Rocket className="h-4 w-4 mr-2" />
