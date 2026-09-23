@@ -31,7 +31,8 @@ interface ExamActiveViewProps {
   casePrompt?: string;
   questionsText?: string;
   onForceClose: () => void;
-  onComplete: () => void;
+  onComplete: (next?: { sessionId: string; sequenceOrder: number }) => void;
+
 }
 
 interface ChatMessage {
@@ -61,8 +62,10 @@ const ExamActiveView = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCase, setShowCase] = useState(true);
   const [isLastCase, setIsLastCase] = useState(true);
+  const [sequence, setSequence] = useState<{ token: string; order: number; total: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,10 +98,16 @@ const ExamActiveView = ({
         .eq("station_token", session.station_token)
         .order("sequence_order", { ascending: true });
 
-      if (!items || items.length <= 1) return;
+      if (!items || items.length === 0) return;
       const current = items.find((i) => i.session_id === sessionId);
       if (!current) return;
+      setSequence({
+        token: session.station_token,
+        order: current.sequence_order,
+        total: items.length,
+      });
       setIsLastCase(!items.some((i) => i.sequence_order > current.sequence_order));
+
     };
     checkSequence();
   }, [sessionId]);
@@ -237,6 +246,30 @@ const ExamActiveView = ({
     [sessionId, persistChat]
   );
 
+  // Prepare (or reuse) the session for the next case in this station's sequence
+  const resolveNextSession = useCallback(async (): Promise<
+    { sessionId: string; sequenceOrder: number } | undefined
+  > => {
+    if (!sequence || isLastCase) return undefined;
+    try {
+      const { data, error } = await (supabase.rpc as any)("advance_station_sequence", {
+        _station_token: sequence.token,
+        _completed_sequence_order: sequence.order,
+      });
+      if (error) {
+        console.error("Advance sequence failed:", error);
+        return undefined;
+      }
+      const next = Array.isArray(data) ? data[0] : null;
+      if (!next?.next_id) return undefined;
+      return { sessionId: next.next_id as string, sequenceOrder: next.next_sequence_order as number };
+    } catch (err) {
+      console.error("Advance sequence error:", err);
+      return undefined;
+    }
+  }, [sequence, isLastCase]);
+
+
   // Complete exam — shared logic (Fix #4: require audio)
   const completeExam = useCallback(async () => {
     if (completingRef.current) return;
@@ -300,7 +333,7 @@ const ExamActiveView = ({
 
       await submitResult(fileName);
       await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
-      onComplete();
+      onComplete(await resolveNextSession());
     } catch (err) {
       console.error("Completion error:", err);
       // Still try to mark complete even on error
@@ -310,9 +343,10 @@ const ExamActiveView = ({
       } catch (innerErr) {
         console.error("Fallback completion error:", innerErr);
       }
-      onComplete();
+      onComplete(await resolveNextSession());
     }
-  }, [sessionId, candidateId, stop, onComplete]);
+  }, [sessionId, candidateId, stop, onComplete, resolveNextSession]);
+
 
   const endLabel = isLastCase ? "Akhiri Ujian" : "Akhiri Soal";
 

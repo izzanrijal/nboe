@@ -186,20 +186,36 @@ const ExamMobile = () => {
     );
   }
 
-  if (step === "reading" && sessionId) {
+  if (step === "next_case") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-6">
+        <CheckCircle2 className="h-16 w-16 text-primary" />
+        <h1 className="text-2xl font-bold text-foreground text-center">Soal ini selesai</h1>
+        <p className="text-muted-foreground text-center max-w-sm">
+          Jawaban dan rekaman Anda sudah tersimpan. Lanjutkan ke soal berikutnya bila Anda sudah siap.
+        </p>
+        <Button size="lg" onClick={handleContinueNext} disabled={validating}>
+          {validating ? "Menyiapkan soal..." : `Lanjut ke Soal ${nextCase?.sequenceOrder ?? ""}`}
+        </Button>
+      </div>
+    );
+  }
+
+  if (step === "reading" && activeSessionId) {
     return (
       <ReadingPhaseView
-        sessionId={sessionId}
+        key={activeSessionId}
+        sessionId={activeSessionId}
         onReadingComplete={handleReadingComplete}
       />
     );
   }
 
-  if (step === "active" && sessionId && audioStream && sessionData) {
+  if (step === "active" && activeSessionId && audioStream && sessionData) {
     return (
-      <ExamErrorBoundary>
+      <ExamErrorBoundary key={activeSessionId}>
         <ExamActiveView
-          sessionId={sessionId}
+          sessionId={activeSessionId}
           sessionStartTime={sessionData.session_start_time}
           timeLimitSeconds={sessionData.time_limit_seconds}
           candidateId={user.id}
@@ -208,11 +224,12 @@ const ExamMobile = () => {
           casePrompt={caseInfo?.casePrompt}
           questionsText={caseInfo?.questionsText}
           onForceClose={() => setStep("force_closed")}
-          onComplete={() => setStep("completed")}
+          onComplete={handleCaseComplete}
         />
       </ExamErrorBoundary>
     );
   }
+
 
 
   if (step === "force_closed") {
