@@ -32,6 +32,8 @@ import { useToast } from "@/hooks/use-toast";
 import RubricBuilder, { type RubricData } from "@/components/admin/RubricBuilder";
 import AssetUploader from "@/components/admin/AssetUploader";
 import parseRubricData from "@/lib/rubricParser";
+import { useAuth } from "@/contexts/AuthContext";
+
 
 interface CaseRow {
   id: string;
