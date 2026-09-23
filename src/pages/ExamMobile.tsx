@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import AudioGatekeeper from "@/components/exam/AudioGatekeeper";
 import ReadingPhaseView from "@/components/exam/ReadingPhaseView";
 import ExamActiveView from "@/components/exam/ExamActiveView";
+import ExamErrorBoundary from "@/components/exam/ExamErrorBoundary";
+
 import ExamCompleted from "@/pages/ExamCompleted";
 import { toast } from "sonner";
 import { ShieldAlert, AlertTriangle } from "lucide-react";
