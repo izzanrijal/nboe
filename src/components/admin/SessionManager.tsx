@@ -5,6 +5,7 @@ import { generateBookingCode } from "@/lib/bookingCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -23,6 +24,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
     panel_exam: [],
   });
   const [pcCount, setPcCount] = useState(1);
+  const [showResultsToCandidateOverride, setShowResultsToCandidateOverride] = useState(false);
   const [deployedStations, setDeployedStations] = useState<DeployedStationToken[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
@@ -92,6 +94,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
             case_id: clinicalCase.id,
             station_token: token,
             status: "waiting",
+            show_results_to_candidate_override: showResultsToCandidateOverride,
           })))
           .select("id, station_token");
         if (sessionError) throw sessionError;
@@ -132,6 +135,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       setShowResults(true);
       setSelectedCases([]);
       setPcCount(1);
+      setShowResultsToCandidateOverride(false);
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -197,6 +201,25 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
                       <span className="text-lg leading-none">+</span>
                     </Button>
                   </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border border-border px-3 py-2">
+                <Checkbox
+                  id={`show-results-override-${examMode}`}
+                  checked={showResultsToCandidateOverride}
+                  onCheckedChange={(checked) => setShowResultsToCandidateOverride(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor={`show-results-override-${examMode}`}
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Tampilkan Nilai ke Peserta
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Jika dicentang, seluruh soal dan PC pada deployment ini menampilkan nilai meski pengaturan per case nonaktif.
+                  </p>
                 </div>
               </div>
             </div>
