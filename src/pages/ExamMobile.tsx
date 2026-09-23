@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import AudioGatekeeper from "@/components/exam/AudioGatekeeper";
 import ReadingPhaseView from "@/components/exam/ReadingPhaseView";
 import ExamActiveView from "@/components/exam/ExamActiveView";
+import ExamErrorBoundary from "@/components/exam/ExamErrorBoundary";
+
 import ExamCompleted from "@/pages/ExamCompleted";
 import { toast } from "sonner";
 import { ShieldAlert, AlertTriangle } from "lucide-react";
@@ -195,20 +197,23 @@ const ExamMobile = () => {
 
   if (step === "active" && sessionId && audioStream && sessionData) {
     return (
-      <ExamActiveView
-        sessionId={sessionId}
-        sessionStartTime={sessionData.session_start_time}
-        timeLimitSeconds={sessionData.time_limit_seconds}
-        candidateId={user.id}
-        audioStream={audioStream}
-        caseTitle={caseInfo?.caseTitle}
-        casePrompt={caseInfo?.casePrompt}
-        questionsText={caseInfo?.questionsText}
-        onForceClose={() => setStep("force_closed")}
-        onComplete={() => setStep("completed")}
-      />
+      <ExamErrorBoundary>
+        <ExamActiveView
+          sessionId={sessionId}
+          sessionStartTime={sessionData.session_start_time}
+          timeLimitSeconds={sessionData.time_limit_seconds}
+          candidateId={user.id}
+          audioStream={audioStream}
+          caseTitle={caseInfo?.caseTitle}
+          casePrompt={caseInfo?.casePrompt}
+          questionsText={caseInfo?.questionsText}
+          onForceClose={() => setStep("force_closed")}
+          onComplete={() => setStep("completed")}
+        />
+      </ExamErrorBoundary>
     );
   }
+
 
   if (step === "force_closed") {
     return (

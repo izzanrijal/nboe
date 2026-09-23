@@ -32,6 +32,8 @@ import { useToast } from "@/hooks/use-toast";
 import RubricBuilder, { type RubricData } from "@/components/admin/RubricBuilder";
 import AssetUploader from "@/components/admin/AssetUploader";
 import parseRubricData from "@/lib/rubricParser";
+import { useAuth } from "@/contexts/AuthContext";
+
 
 interface CaseRow {
   id: string;
@@ -70,6 +72,8 @@ const CasePreview = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isMasterAdmin } = useAuth();
+
 
   // ---- State form (di-sync dari DB via useEffect) ----
   const [title, setTitle] = useState("");
@@ -287,6 +291,8 @@ const CasePreview = () => {
   const statusMeta = STATUS_LABEL[caseRow.status] ?? STATUS_LABEL.published;
   const needsReview = caseRow.source === "agent_api" && caseRow.status === "draft";
   const isBusy = saveMutation.isPending || deleteMutation.isPending;
+  const canEdit = isMasterAdmin || (!!caseRow.created_by && caseRow.created_by === user?.id);
+
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -319,7 +325,11 @@ const CasePreview = () => {
 
           <div className="flex-1" />
 
-          {!isEditing ? (
+          {!canEdit ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Eye className="h-3.5 w-3.5" /> Hanya lihat — soal milik admin lain
+            </span>
+          ) : !isEditing ? (
             <Button onClick={() => setIsEditing(true)} className="gap-2">
               <Edit3 className="h-4 w-4" />
               Edit
@@ -340,11 +350,12 @@ const CasePreview = () => {
               </Button>
             </>
           )}
+
         </div>
       </div>
 
       {/* Banner review — hanya untuk kiriman AI yang belum di-review */}
-      {needsReview && (
+      {needsReview && canEdit && (
         <div className="mx-auto max-w-6xl mb-6">
           <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20">
             <CardHeader>
