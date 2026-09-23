@@ -349,7 +349,7 @@ const CasePreview = () => {
       </div>
 
       {/* Banner review — hanya untuk kiriman AI yang belum di-review */}
-      {needsReview && (
+      {needsReview && canEdit && (
         <div className="mx-auto max-w-6xl mb-6">
           <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20">
             <CardHeader>
