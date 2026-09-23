@@ -31,7 +31,8 @@ interface ExamActiveViewProps {
   casePrompt?: string;
   questionsText?: string;
   onForceClose: () => void;
-  onComplete: () => void;
+  onComplete: (next?: { sessionId: string; sequenceOrder: number }) => void;
+
 }
 
 interface ChatMessage {
