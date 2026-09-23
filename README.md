@@ -214,3 +214,29 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+### Alur ujian multi-soal (station sequence)
+
+Satu station dapat berisi beberapa soal berurutan. `ExamMobile` memakai *state machine*
+berikut dan **tidak** berpindah route antar soal — URL hasil scan QR
+(`/exam/:sessionId`) dijaga tetap stabil, dan sesi soal aktif ditukar lewat state:
+
+```
+gatekeeper → reading(q1) → active(q1)
+  → next_case(q2) → reading(q2) → active(q2)
+  → … (ulangi untuk q3..qN)
+  → completed
+```
+
+Catatan penting saat mengubah bagian ini:
+
+- `activeSessionId` adalah sesi soal yang **sedang berjalan**; `sessionId` dari route
+  dipakai hanya untuk klaim awal (`claim_exam_session`).
+- View diberi `key={activeSessionId}` agar recorder dan channel Supabase remount bersih
+  saat pindah soal; mikrofon tidak diminta ulang selama track masih hidup.
+- `CountdownTimer` hanya boleh memanggil `onComplete` **satu kali** (ref + flag `fired`).
+  Memanggilnya berulang membuat sisa soal ter-skip.
+- Selesai karena waktu habis (`"timeout"`) dibedakan dari selesai manual (`"manual"`) agar
+  timeout tidak diam-diam mengakhiri ujian di tengah rangkaian.
+- Jalankan `npx vitest run` — `src/test/exam-navigation.test.ts` menjaga regresi alur ini.
+
