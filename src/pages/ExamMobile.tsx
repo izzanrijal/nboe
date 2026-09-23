@@ -192,13 +192,13 @@ const ExamMobile = () => {
 
     setValidating(true);
     try {
-      const { data: session, error: sessionError } = await supabase
-        .from("exam_sessions")
-        .select("station_token")
-        .eq("id", activeSessionId)
+      const { data: current, error: currentError } = await supabase
+        .from("exam_sequence_items")
+        .select("deployment_id, sequence_order, station_token")
+        .eq("session_id", activeSessionId)
         .maybeSingle();
-      if (sessionError) throw sessionError;
-      if (!session?.station_token) {
+      if (currentError) throw currentError;
+      if (!current?.deployment_id) {
         toast.error("Urutan soal belum tersedia. Silakan coba lagi atau akhiri ujian.");
         return;
       }
@@ -206,21 +206,20 @@ const ExamMobile = () => {
       const { data: items, error: itemsError } = await supabase
         .from("exam_sequence_items")
         .select("sequence_order, session_id")
-        .eq("station_token", session.station_token)
+        .eq("deployment_id", current.deployment_id)
         .order("sequence_order", { ascending: true });
       if (itemsError) throw itemsError;
 
-      const current = items?.find((item) => item.session_id === activeSessionId);
       const nextItem = items?.find(
-        (item) => current && item.sequence_order > current.sequence_order
+        (item) => item.sequence_order > current.sequence_order
       );
-      if (!current || !nextItem) {
+      if (!nextItem) {
         toast.info("Tidak ada soal berikutnya. Anda dapat mengakhiri ujian.");
         return;
       }
 
       const { data, error } = await supabase.rpc("advance_station_sequence", {
-        _station_token: session.station_token,
+        _station_token: current.station_token,
         _completed_sequence_order: current.sequence_order,
       });
       if (error) throw error;

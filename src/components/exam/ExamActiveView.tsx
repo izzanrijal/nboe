@@ -93,21 +93,21 @@ const ExamActiveView = ({
   }, [sessionId]);
 
   const checkSequence = useCallback(async (): Promise<SequenceInfo | null> => {
-    const { data: session, error: sessionError } = await supabase
-      .from("exam_sessions")
-      .select("station_token")
-      .eq("id", sessionId)
+    const { data: currentItem, error: currentItemError } = await supabase
+      .from("exam_sequence_items")
+      .select("deployment_id, sequence_order, station_token")
+      .eq("session_id", sessionId)
       .maybeSingle();
-    if (sessionError) {
-      console.error("Sequence session lookup failed:", sessionError);
+    if (currentItemError) {
+      console.error("Current sequence item lookup failed:", currentItemError);
       return null;
     }
-    if (!session?.station_token) return null;
+    if (!currentItem?.deployment_id) return null;
 
     const { data: items, error: itemsError } = await supabase
       .from("exam_sequence_items")
       .select("sequence_order, session_id")
-      .eq("station_token", session.station_token)
+      .eq("deployment_id", currentItem.deployment_id)
       .order("sequence_order", { ascending: true });
     if (itemsError) {
       console.error("Sequence items lookup failed:", itemsError);
@@ -119,7 +119,7 @@ const ExamActiveView = ({
     if (!current) return null;
 
     const resolved = {
-      token: session.station_token,
+      token: currentItem.station_token,
       order: current.sequence_order,
       total: items.length,
       isLast: !items.some((item) => item.sequence_order > current.sequence_order),

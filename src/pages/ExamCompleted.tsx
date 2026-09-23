@@ -10,32 +10,23 @@ const ExamCompleted = () => {
   useEffect(() => {
     if (!sessionId) return;
     const checkSequence = async () => {
-      // Get the session's station_token
-      const { data: session } = await supabase
-        .from("exam_sessions")
-        .select("station_token")
-        .eq("id", sessionId)
+      const { data: currentItem } = await supabase
+        .from("exam_sequence_items")
+        .select("deployment_id, sequence_order")
+        .eq("session_id", sessionId)
         .single();
 
-      if (!session) { setHasNextExam(false); return; }
+      if (!currentItem?.deployment_id) { setHasNextExam(false); return; }
 
-      // Check if this token has sequence items
       const { data: items } = await supabase
         .from("exam_sequence_items")
-        .select("sequence_order, session_id")
-        .eq("station_token", session.station_token)
+        .select("sequence_order")
+        .eq("deployment_id", currentItem.deployment_id)
         .order("sequence_order", { ascending: true });
 
       if (!items || items.length <= 1) { setHasNextExam(false); return; }
 
-      // Find current item and check if there's a next one
-      const currentItem = items.find((i: any) => i.session_id === sessionId);
-      if (currentItem) {
-        const hasNext = items.some((i: any) => i.sequence_order > (currentItem as any).sequence_order);
-        setHasNextExam(hasNext);
-      } else {
-        setHasNextExam(false);
-      }
+      setHasNextExam(items.some((item) => item.sequence_order > currentItem.sequence_order));
     };
     checkSequence();
   }, [sessionId]);

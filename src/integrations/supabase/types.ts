@@ -236,6 +236,7 @@ export type Database = {
         Row: {
           case_id: string
           created_at: string
+          deployment_id: string
           id: string
           sequence_order: number
           session_id: string | null
@@ -244,6 +245,7 @@ export type Database = {
         Insert: {
           case_id: string
           created_at?: string
+          deployment_id: string
           id?: string
           sequence_order: number
           session_id?: string | null
@@ -252,6 +254,7 @@ export type Database = {
         Update: {
           case_id?: string
           created_at?: string
+          deployment_id?: string
           id?: string
           sequence_order?: number
           session_id?: string | null
@@ -281,6 +284,7 @@ export type Database = {
           current_candidate_id: string | null
           id: string
           session_start_time: string | null
+          show_results_to_candidate_override: boolean
           station_token: string
           status: string
         }
@@ -290,6 +294,7 @@ export type Database = {
           current_candidate_id?: string | null
           id?: string
           session_start_time?: string | null
+          show_results_to_candidate_override?: boolean
           station_token: string
           status?: string
         }
@@ -299,6 +304,7 @@ export type Database = {
           current_candidate_id?: string | null
           id?: string
           session_start_time?: string | null
+          show_results_to_candidate_override?: boolean
           station_token?: string
           status?: string
         }
@@ -377,7 +383,9 @@ export type Database = {
           next_is_last: boolean
           next_sequence_order: number
           next_session_start_time: string
+          next_station_token: string
           next_status: string
+          outcome: string
         }[]
       }
       claim_exam_session: {
@@ -411,7 +419,10 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           case_id: string
+          deployment_id: string
           id: string
+          sequence_order: number
+          sequence_total: number
           session_start_time: string
           status: string
         }[]

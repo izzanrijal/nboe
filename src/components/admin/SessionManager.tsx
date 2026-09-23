@@ -5,6 +5,7 @@ import { generateBookingCode } from "@/lib/bookingCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -23,6 +24,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
     panel_exam: [],
   });
   const [pcCount, setPcCount] = useState(1);
+  const [showResultsToCandidateOverride, setShowResultsToCandidateOverride] = useState(false);
   const [deployedTokens, setDeployedTokens] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
@@ -71,19 +73,27 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       const tokens: string[] = [];
 
       for (let pc = 0; pc < pcCount; pc++) {
-        const token = generateBookingCode();
+        const deploymentId = crypto.randomUUID();
+        const tokensForCases = selectedCases.map(() => generateBookingCode());
+        const firstToken = tokensForCases[0];
 
         // Create first session
         const { data: sessionData, error: sessionError } = await supabase
           .from("exam_sessions")
-          .insert({ case_id: selectedCases[0].id, station_token: token, status: "waiting" })
+          .insert({
+            case_id: selectedCases[0].id,
+            station_token: firstToken,
+            status: "waiting",
+            show_results_to_candidate_override: showResultsToCandidateOverride,
+          })
           .select("id")
           .single();
         if (sessionError) throw sessionError;
 
         // Create sequence items
         const sequenceItems = selectedCases.map((c, i) => ({
-          station_token: token,
+          deployment_id: deploymentId,
+          station_token: tokensForCases[i],
           case_id: c.id,
           sequence_order: i + 1,
           session_id: i === 0 ? sessionData.id : null,
@@ -92,7 +102,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
         const { error: seqError } = await supabase.from("exam_sequence_items").insert(sequenceItems);
         if (seqError) throw seqError;
 
-        tokens.push(token);
+        tokens.push(firstToken);
       }
 
       return tokens;
@@ -104,6 +114,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       setShowResults(true);
       setSelectedCases([]);
       setPcCount(1);
+      setShowResultsToCandidateOverride(false);
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -125,7 +136,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
           />
 
           {selectedCases.length > 0 && (
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-center">
               <div className="flex items-center gap-2">
                 <Monitor className="h-4 w-4 text-muted-foreground" />
                 <label className="text-sm font-medium">Jumlah PC/Monitor:</label>
@@ -163,6 +174,25 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
                   >
                     <span className="text-lg leading-none">+</span>
                   </Button>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border border-border px-3 py-2">
+                <Checkbox
+                  id={`show-results-override-${examMode}`}
+                  checked={showResultsToCandidateOverride}
+                  onCheckedChange={(checked) => setShowResultsToCandidateOverride(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor={`show-results-override-${examMode}`}
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Tampilkan Nilai ke Peserta
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Jika dicentang, seluruh soal dan PC pada deployment ini menampilkan nilai meski pengaturan per case nonaktif.
+                  </p>
                 </div>
               </div>
             </div>

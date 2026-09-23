@@ -74,10 +74,19 @@ const StationDisplay = () => {
     stationToken: string,
     displayedSessionId: string | null
   ): Promise<StationSequenceInfo | null> => {
+    const { data: currentItem, error: currentItemError } = await supabase
+      .from("exam_sequence_items")
+      .select("deployment_id")
+      .eq("station_token", stationToken)
+      .maybeSingle();
+
+    if (currentItemError) throw currentItemError;
+    if (!currentItem?.deployment_id) return null;
+
     const { data, error } = await supabase
       .from("exam_sequence_items")
       .select("sequence_order, session_id")
-      .eq("station_token", stationToken)
+      .eq("deployment_id", currentItem.deployment_id)
       .order("sequence_order", { ascending: true });
 
     if (error) throw error;
@@ -166,6 +175,7 @@ const StationDisplay = () => {
 
           const next = data?.[0];
           if (next?.next_id) {
+            const nextToken = next.next_station_token ?? stationToken;
             setSession({
               id: next.next_id,
               case_id: next.next_case_id,
@@ -176,12 +186,14 @@ const StationDisplay = () => {
               sessionId: next.next_id,
               status: "resolved",
               info: {
-                token: freshSequence.token,
+                token: nextToken,
                 currentOrder: next.next_sequence_order,
                 total: freshSequence.total,
                 currentSessionId: next.next_id,
               },
             });
+            setCurrentToken(nextToken);
+            window.history.replaceState(null, "", `/station/${nextToken}`);
             setActiveAsset(null);
             setCaseData(null);
             setState(next.next_status === "active" ? "active" : "waiting");
@@ -246,7 +258,7 @@ const StationDisplay = () => {
     const pollInterval = setInterval(async () => {
       const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
       const row = Array.isArray(data) ? data?.[0] : data;
-      // One token spans the sequence. Ignore a newer session until this display advances.
+      // Ignore a different session until this display explicitly advances its token.
       if (row?.id === displayedSessionId) updateFromRow(row);
     }, 3000);
 
