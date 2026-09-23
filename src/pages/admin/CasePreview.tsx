@@ -319,7 +319,11 @@ const CasePreview = () => {
 
           <div className="flex-1" />
 
-          {!isEditing ? (
+          {!canEdit ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Eye className="h-3.5 w-3.5" /> Hanya lihat — soal milik admin lain
+            </span>
+          ) : !isEditing ? (
             <Button onClick={() => setIsEditing(true)} className="gap-2">
               <Edit3 className="h-4 w-4" />
               Edit
@@ -340,6 +344,7 @@ const CasePreview = () => {
               </Button>
             </>
           )}
+
         </div>
       </div>
 
