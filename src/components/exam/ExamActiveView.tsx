@@ -8,6 +8,11 @@ import useAudioLevel from "@/hooks/useAudioLevel";
 import { toast } from "sonner";
 import { Mic, MicOff, Monitor, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  resolveCandidateSequenceRow,
+  type NextSessionResolution,
+  type SequenceRpcRow,
+} from "@/lib/examSequence";
 
 import {
   AlertDialog,
@@ -32,7 +37,7 @@ interface ExamActiveViewProps {
   questionsText?: string;
   onForceClose: () => void;
   onComplete: (
-    next?: { sessionId: string; sequenceOrder: number },
+    resolution: NextSessionResolution,
     reason?: "manual" | "timeout"
   ) => void;
 
@@ -98,24 +103,28 @@ const ExamActiveView = ({
       .select("station_token")
       .eq("id", sessionId)
       .maybeSingle();
-    if (sessionError) {
-      console.error("Sequence session lookup failed:", sessionError);
-      return null;
-    }
+    if (sessionError) throw sessionError;
     if (!session?.station_token) return null;
+
+    const { data: currentItem, error: currentError } = await supabase
+      .from("exam_sequence_items")
+      .select("deployment_id, station_token, sequence_order, session_id")
+      .eq("station_token", session.station_token)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    if (!currentItem) return null;
 
     const { data: items, error: itemsError } = await supabase
       .from("exam_sequence_items")
-      .select("sequence_order, session_id")
-      .eq("station_token", session.station_token)
+      .select("deployment_id, station_token, sequence_order, session_id")
+      .eq("deployment_id", currentItem.deployment_id)
       .order("sequence_order", { ascending: true });
-    if (itemsError) {
-      console.error("Sequence items lookup failed:", itemsError);
-      return null;
-    }
+    if (itemsError) throw itemsError;
     if (!items || items.length === 0) return null;
 
-    const current = items.find((item) => item.session_id === sessionId);
+    const current = items.find(
+      (item) => item.station_token === session.station_token && item.session_id === sessionId
+    );
     if (!current) return null;
 
     const resolved = {
@@ -132,7 +141,9 @@ const ExamActiveView = ({
   // Determine if this is the last case of a sequence (label on the end button).
   // resolveNextSession also invokes this on demand if this lookup is still pending.
   useEffect(() => {
-    void checkSequence();
+    void checkSequence().catch((error) => {
+      console.error("Sequence lookup failed:", error);
+    });
   }, [checkSequence]);
 
   // Start recording + join channel
@@ -270,26 +281,25 @@ const ExamActiveView = ({
   );
 
   // Prepare (or reuse) the session for the next case in this station's sequence
-  const resolveNextSession = useCallback(async (): Promise<
-    { sessionId: string; sequenceOrder: number } | undefined
-  > => {
-    const resolvedSequence = sequence ?? (await checkSequence());
-    if (!resolvedSequence || resolvedSequence.isLast) return undefined;
+  const resolveNextSession = useCallback(async (): Promise<NextSessionResolution> => {
     try {
+      const resolvedSequence = sequence ?? (await checkSequence());
+      // A missing mapping is not proof that the deployment is complete.
+      if (!resolvedSequence) return { outcome: "unresolved" };
+
       const { data, error } = await supabase.rpc("advance_station_sequence", {
         _station_token: resolvedSequence.token,
         _completed_sequence_order: resolvedSequence.order,
       });
       if (error) {
         console.error("Advance sequence failed:", error);
-        return undefined;
+        return { outcome: "unresolved" };
       }
       const next = Array.isArray(data) ? data[0] : null;
-      if (!next?.next_id) return undefined;
-      return { sessionId: next.next_id as string, sequenceOrder: next.next_sequence_order as number };
+      return resolveCandidateSequenceRow(next as SequenceRpcRow | null);
     } catch (err) {
       console.error("Advance sequence error:", err);
-      return undefined;
+      return { outcome: "unresolved" };
     }
   }, [sequence, checkSequence]);
 

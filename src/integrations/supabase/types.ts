@@ -236,6 +236,7 @@ export type Database = {
         Row: {
           case_id: string
           created_at: string
+          deployment_id: string
           id: string
           sequence_order: number
           session_id: string | null
@@ -244,6 +245,7 @@ export type Database = {
         Insert: {
           case_id: string
           created_at?: string
+          deployment_id: string
           id?: string
           sequence_order: number
           session_id?: string | null
@@ -252,6 +254,7 @@ export type Database = {
         Update: {
           case_id?: string
           created_at?: string
+          deployment_id?: string
           id?: string
           sequence_order?: number
           session_id?: string | null
@@ -372,12 +375,14 @@ export type Database = {
       advance_station_sequence: {
         Args: { _completed_sequence_order: number; _station_token: string }
         Returns: {
-          next_case_id: string
-          next_id: string
+          next_case_id: string | null
+          next_id: string | null
           next_is_last: boolean
-          next_sequence_order: number
-          next_session_start_time: string
-          next_status: string
+          next_sequence_order: number | null
+          next_session_start_time: string | null
+          next_status: string | null
+          next_station_token: string | null
+          outcome: string
         }[]
       }
       claim_exam_session: {
@@ -411,8 +416,11 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           case_id: string
+          deployment_id: string | null
           id: string
-          session_start_time: string
+          sequence_order: number | null
+          sequence_total: number | null
+          session_start_time: string | null
           status: string
         }[]
       }
