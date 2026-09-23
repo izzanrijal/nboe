@@ -309,7 +309,7 @@ const ExamActiveView = ({
 
       await submitResult(fileName);
       await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
-      onComplete();
+      onComplete(await resolveNextSession());
     } catch (err) {
       console.error("Completion error:", err);
       // Still try to mark complete even on error
@@ -319,9 +319,10 @@ const ExamActiveView = ({
       } catch (innerErr) {
         console.error("Fallback completion error:", innerErr);
       }
-      onComplete();
+      onComplete(await resolveNextSession());
     }
-  }, [sessionId, candidateId, stop, onComplete]);
+  }, [sessionId, candidateId, stop, onComplete, resolveNextSession]);
+
 
   const endLabel = isLastCase ? "Akhiri Ujian" : "Akhiri Soal";
 
