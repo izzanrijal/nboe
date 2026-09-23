@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, AlertTriangle, History } from "lucide-react";
 import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
+import { canCandidateViewResultDetails } from "@/lib/resultVisibility";
 
 interface ScoreItem {
   item: string;
@@ -76,7 +77,7 @@ const CandidateResultsList = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("exam_results")
-        .select("id, created_at, ai_score_report, transcript, exam_sessions:session_id(status, clinical_cases:case_id(title, show_results_to_candidate))")
+        .select("id, created_at, ai_score_report, transcript, exam_sessions:session_id(status, show_results_to_candidate_override, clinical_cases:case_id(title, show_results_to_candidate))")
         .eq("candidate_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -116,8 +117,12 @@ const CandidateResultsList = () => {
       </CardHeader>
       <CardContent className="space-y-3">
         {results.map((r: any) => {
-          const caseData = r.exam_sessions?.clinical_cases;
-          const showResults = caseData?.show_results_to_candidate === true;
+          const sessionData = r.exam_sessions;
+          const caseData = sessionData?.clinical_cases;
+          const showResults = canCandidateViewResultDetails(
+            sessionData?.show_results_to_candidate_override,
+            caseData?.show_results_to_candidate
+          );
           const caseTitle = caseData?.title ?? "—";
           const date = new Date(r.created_at).toLocaleDateString("id-ID", {
             day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
