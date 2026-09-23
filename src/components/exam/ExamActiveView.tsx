@@ -98,10 +98,16 @@ const ExamActiveView = ({
         .eq("station_token", session.station_token)
         .order("sequence_order", { ascending: true });
 
-      if (!items || items.length <= 1) return;
+      if (!items || items.length === 0) return;
       const current = items.find((i) => i.session_id === sessionId);
       if (!current) return;
+      setSequence({
+        token: session.station_token,
+        order: current.sequence_order,
+        total: items.length,
+      });
       setIsLastCase(!items.some((i) => i.sequence_order > current.sequence_order));
+
     };
     checkSequence();
   }, [sessionId]);
