@@ -31,7 +31,10 @@ interface ExamActiveViewProps {
   casePrompt?: string;
   questionsText?: string;
   onForceClose: () => void;
-  onComplete: (next?: { sessionId: string; sequenceOrder: number }) => void;
+  onComplete: (
+    next?: { sessionId: string; sequenceOrder: number },
+    reason?: "manual" | "timeout"
+  ) => void;
 
 }
 
@@ -40,6 +43,13 @@ interface ChatMessage {
   text: string;
   available?: boolean;
   loading?: boolean;
+}
+
+interface SequenceInfo {
+  token: string;
+  order: number;
+  total: number;
+  isLast: boolean;
 }
 
 const ExamActiveView = ({
@@ -62,7 +72,7 @@ const ExamActiveView = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCase, setShowCase] = useState(true);
   const [isLastCase, setIsLastCase] = useState(true);
-  const [sequence, setSequence] = useState<{ token: string; order: number; total: number } | null>(null);
+  const [sequence, setSequence] = useState<SequenceInfo | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
 
@@ -82,35 +92,48 @@ const ExamActiveView = ({
       });
   }, [sessionId]);
 
-  // Determine if this is the last case of a sequence (label on the end button)
-  useEffect(() => {
-    const checkSequence = async () => {
-      const { data: session } = await supabase
-        .from("exam_sessions")
-        .select("station_token")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (!session?.station_token) return;
+  const checkSequence = useCallback(async (): Promise<SequenceInfo | null> => {
+    const { data: session, error: sessionError } = await supabase
+      .from("exam_sessions")
+      .select("station_token")
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (sessionError) {
+      console.error("Sequence session lookup failed:", sessionError);
+      return null;
+    }
+    if (!session?.station_token) return null;
 
-      const { data: items } = await supabase
-        .from("exam_sequence_items")
-        .select("sequence_order, session_id")
-        .eq("station_token", session.station_token)
-        .order("sequence_order", { ascending: true });
+    const { data: items, error: itemsError } = await supabase
+      .from("exam_sequence_items")
+      .select("sequence_order, session_id")
+      .eq("station_token", session.station_token)
+      .order("sequence_order", { ascending: true });
+    if (itemsError) {
+      console.error("Sequence items lookup failed:", itemsError);
+      return null;
+    }
+    if (!items || items.length === 0) return null;
 
-      if (!items || items.length === 0) return;
-      const current = items.find((i) => i.session_id === sessionId);
-      if (!current) return;
-      setSequence({
-        token: session.station_token,
-        order: current.sequence_order,
-        total: items.length,
-      });
-      setIsLastCase(!items.some((i) => i.sequence_order > current.sequence_order));
+    const current = items.find((item) => item.session_id === sessionId);
+    if (!current) return null;
 
+    const resolved = {
+      token: session.station_token,
+      order: current.sequence_order,
+      total: items.length,
+      isLast: !items.some((item) => item.sequence_order > current.sequence_order),
     };
-    checkSequence();
+    setSequence(resolved);
+    setIsLastCase(resolved.isLast);
+    return resolved;
   }, [sessionId]);
+
+  // Determine if this is the last case of a sequence (label on the end button).
+  // resolveNextSession also invokes this on demand if this lookup is still pending.
+  useEffect(() => {
+    void checkSequence();
+  }, [checkSequence]);
 
   // Start recording + join channel
   useEffect(() => {
@@ -250,11 +273,12 @@ const ExamActiveView = ({
   const resolveNextSession = useCallback(async (): Promise<
     { sessionId: string; sequenceOrder: number } | undefined
   > => {
-    if (!sequence || isLastCase) return undefined;
+    const resolvedSequence = sequence ?? (await checkSequence());
+    if (!resolvedSequence || resolvedSequence.isLast) return undefined;
     try {
-      const { data, error } = await (supabase.rpc as any)("advance_station_sequence", {
-        _station_token: sequence.token,
-        _completed_sequence_order: sequence.order,
+      const { data, error } = await supabase.rpc("advance_station_sequence", {
+        _station_token: resolvedSequence.token,
+        _completed_sequence_order: resolvedSequence.order,
       });
       if (error) {
         console.error("Advance sequence failed:", error);
@@ -267,11 +291,11 @@ const ExamActiveView = ({
       console.error("Advance sequence error:", err);
       return undefined;
     }
-  }, [sequence, isLastCase]);
+  }, [sequence, checkSequence]);
 
 
   // Complete exam — shared logic (Fix #4: require audio)
-  const completeExam = useCallback(async () => {
+  const completeExam = useCallback(async (reason: "manual" | "timeout" = "manual") => {
     if (completingRef.current) return;
     completingRef.current = true;
     setSubmitting(true);
@@ -333,7 +357,7 @@ const ExamActiveView = ({
 
       await submitResult(fileName);
       await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", sessionId);
-      onComplete(await resolveNextSession());
+      onComplete(await resolveNextSession(), reason);
     } catch (err) {
       console.error("Completion error:", err);
       // Still try to mark complete even on error
@@ -343,7 +367,7 @@ const ExamActiveView = ({
       } catch (innerErr) {
         console.error("Fallback completion error:", innerErr);
       }
-      onComplete(await resolveNextSession());
+      onComplete(await resolveNextSession(), reason);
     }
   }, [sessionId, candidateId, stop, onComplete, resolveNextSession]);
 
@@ -357,7 +381,7 @@ const ExamActiveView = ({
         <CountdownTimer
           sessionStartTime={sessionStartTime}
           timeLimitSeconds={timeLimitSeconds}
-          onComplete={completeExam}
+          onComplete={() => void completeExam("timeout")}
           className="text-foreground text-3xl"
         />
         <AlertDialog>
@@ -382,7 +406,7 @@ const ExamActiveView = ({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Kembali</AlertDialogCancel>
-              <AlertDialogAction onClick={completeExam}>Ya, {endLabel}</AlertDialogAction>
+              <AlertDialogAction onClick={() => void completeExam("manual")}>Ya, {endLabel}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

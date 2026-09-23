@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface CountdownTimerProps {
   sessionStartTime: string;
@@ -14,23 +14,30 @@ const CountdownTimer = ({
   className = "",
 }: CountdownTimerProps) => {
   const [remaining, setRemaining] = useState(timeLimitSeconds);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     const endTime = new Date(sessionStartTime).getTime() + timeLimitSeconds * 1000;
+    let fired = false;
 
     const tick = () => {
       const now = Date.now();
       const left = Math.max(0, Math.floor((endTime - now) / 1000));
       setRemaining(left);
-      if (left <= 0) {
-        onComplete();
+      if (left <= 0 && !fired) {
+        fired = true;
+        onCompleteRef.current();
       }
     };
 
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [sessionStartTime, timeLimitSeconds, onComplete]);
+  }, [sessionStartTime, timeLimitSeconds]);
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
