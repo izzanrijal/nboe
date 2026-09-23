@@ -291,6 +291,8 @@ const CasePreview = () => {
   const statusMeta = STATUS_LABEL[caseRow.status] ?? STATUS_LABEL.published;
   const needsReview = caseRow.source === "agent_api" && caseRow.status === "draft";
   const isBusy = saveMutation.isPending || deleteMutation.isPending;
+  const canEdit = isMasterAdmin || (!!caseRow.created_by && caseRow.created_by === user?.id);
+
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
