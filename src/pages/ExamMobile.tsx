@@ -11,6 +11,12 @@ import ExamCompleted from "@/pages/ExamCompleted";
 import { toast } from "sonner";
 import { ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  candidateStepAfterResolution,
+  resolveCandidateSequenceRow,
+  type NextSessionResolution,
+  type SequenceRpcRow,
+} from "@/lib/examSequence";
 
 type ExamStep = "gatekeeper" | "reading" | "active" | "next_case" | "timeout_unresolved" | "force_closed" | "completed" | "duplicate_warning";
 
@@ -170,15 +176,16 @@ const ExamMobile = () => {
 
   const handleCaseComplete = useCallback(
     (
-      next?: { sessionId: string; sequenceOrder: number },
-      reason: "manual" | "timeout" = "manual"
+      resolution: NextSessionResolution,
+      _reason: "manual" | "timeout" = "manual"
     ) => {
-      if (next?.sessionId) {
-        setNextCase(next);
+      const nextStep = candidateStepAfterResolution(resolution);
+      if (nextStep === "next_case" && "next" in resolution) {
+        setNextCase(resolution.next);
         setStep("next_case");
         return;
       }
-      if (reason === "timeout") {
+      if (nextStep === "timeout_unresolved") {
         setStep("timeout_unresolved");
         return;
       }
@@ -203,19 +210,29 @@ const ExamMobile = () => {
         return;
       }
 
+      const { data: currentItem, error: currentError } = await supabase
+        .from("exam_sequence_items")
+        .select("deployment_id, station_token, sequence_order, session_id")
+        .eq("station_token", session.station_token)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (!currentItem) {
+        toast.error("Urutan soal belum tersedia. Silakan coba lagi atau hubungi pengawas.");
+        return;
+      }
+
       const { data: items, error: itemsError } = await supabase
         .from("exam_sequence_items")
-        .select("sequence_order, session_id")
-        .eq("station_token", session.station_token)
+        .select("deployment_id, station_token, sequence_order, session_id")
+        .eq("deployment_id", currentItem.deployment_id)
         .order("sequence_order", { ascending: true });
       if (itemsError) throw itemsError;
 
-      const current = items?.find((item) => item.session_id === activeSessionId);
-      const nextItem = items?.find(
-        (item) => current && item.sequence_order > current.sequence_order
+      const current = items?.find(
+        (item) => item.station_token === session.station_token && item.session_id === activeSessionId
       );
-      if (!current || !nextItem) {
-        toast.info("Tidak ada soal berikutnya. Anda dapat mengakhiri ujian.");
+      if (!current) {
+        toast.error("Urutan soal tidak cocok. Hubungi pengawas.");
         return;
       }
 
@@ -226,15 +243,19 @@ const ExamMobile = () => {
       if (error) throw error;
 
       const next = Array.isArray(data) ? data[0] : null;
-      if (!next?.next_id) {
+      const resolution = resolveCandidateSequenceRow(next as SequenceRpcRow | null);
+      const nextStep = candidateStepAfterResolution(resolution);
+
+      if (nextStep === "completed") {
+        setStep("completed");
+        return;
+      }
+      if (nextStep !== "next_case" || !("next" in resolution)) {
         toast.error("Soal berikutnya belum dapat disiapkan. Silakan coba lagi.");
         return;
       }
 
-      setNextCase({
-        sessionId: next.next_id as string,
-        sequenceOrder: next.next_sequence_order as number,
-      });
+      setNextCase(resolution.next);
       setStep("next_case");
     } catch (err) {
       console.error("Retry sequence resolution failed:", err);
@@ -336,9 +357,9 @@ const ExamMobile = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 gap-6">
         <AlertTriangle className="h-16 w-16 text-destructive" />
-        <h1 className="text-2xl font-bold text-foreground text-center">Waktu soal ini habis</h1>
+        <h1 className="text-2xl font-bold text-foreground text-center">Soal Ini Sudah Disimpan</h1>
         <p className="text-muted-foreground text-center max-w-sm">
-          Jawaban Anda sudah disimpan, tetapi soal berikutnya belum dapat ditemukan. Coba lagi agar sisa soal tidak terlewat.
+          Soal berikutnya belum dapat dipastikan. Coba lagi agar tidak ada soal yang terlewat.
         </p>
         <div className="flex flex-col w-full max-w-sm gap-3">
           <Button size="lg" onClick={retryTimedOutSequence} disabled={validating}>
@@ -396,7 +417,7 @@ const ExamMobile = () => {
   }
 
   if (step === "completed") {
-    return <ExamCompleted />;
+    return <ExamCompleted sessionIdOverride={activeSessionId} />;
   }
 
   // Fallback: step is "active" but conditions not fully met

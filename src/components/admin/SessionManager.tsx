@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Rocket, Copy, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Search, Plus, Monitor } from "lucide-react";
-import StationDeployResults from "@/components/admin/StationDeployResults";
+import StationDeployResults, { type DeployedStationToken } from "@/components/admin/StationDeployResults";
 import CaseTransferList from "@/components/admin/CaseTransferList";
 import DeployedStationsTable from "@/components/admin/DeployedStationsTable";
 
@@ -23,7 +23,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
     panel_exam: [],
   });
   const [pcCount, setPcCount] = useState(1);
-  const [deployedTokens, setDeployedTokens] = useState<string[]>([]);
+  const [deployedStations, setDeployedStations] = useState<DeployedStationToken[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -68,39 +68,67 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       if (selectedCases.length === 0) throw new Error("Pilih minimal satu case");
       if (pcCount < 1 || pcCount > 50) throw new Error("Jumlah PC harus 1-50");
 
-      const tokens: string[] = [];
+      const deployed: DeployedStationToken[] = [];
+      const batchTokens = new Set<string>();
 
       for (let pc = 0; pc < pcCount; pc++) {
-        const token = generateBookingCode();
+        const deploymentId = crypto.randomUUID();
+        const questions = selectedCases.map((clinicalCase, questionIndex) => {
+          let token = generateBookingCode();
+          while (batchTokens.has(token)) token = generateBookingCode();
+          batchTokens.add(token);
+          return {
+            token,
+            clinicalCase,
+            questionNumber: questionIndex + 1,
+          };
+        });
 
-        // Create first session
-        const { data: sessionData, error: sessionError } = await supabase
+        // pcCount means physical PCs. Each PC receives one token/session per
+        // selected question, so total tokens = pcCount × selectedCases.length.
+        const { data: sessions, error: sessionError } = await supabase
           .from("exam_sessions")
-          .insert({ case_id: selectedCases[0].id, station_token: token, status: "waiting" })
-          .select("id")
-          .single();
+          .insert(questions.map(({ token, clinicalCase }) => ({
+            case_id: clinicalCase.id,
+            station_token: token,
+            status: "waiting",
+          })))
+          .select("id, station_token");
         if (sessionError) throw sessionError;
 
-        // Create sequence items
-        const sequenceItems = selectedCases.map((c, i) => ({
+        const sessionByToken = new Map(
+          (sessions ?? []).map((session) => [session.station_token, session.id])
+        );
+        if (sessionByToken.size !== questions.length) {
+          throw new Error("Tidak semua sesi soal berhasil dibuat");
+        }
+
+        const sequenceItems = questions.map(({ token, clinicalCase, questionNumber }) => ({
+          deployment_id: deploymentId,
           station_token: token,
-          case_id: c.id,
-          sequence_order: i + 1,
-          session_id: i === 0 ? sessionData.id : null,
+          case_id: clinicalCase.id,
+          sequence_order: questionNumber,
+          session_id: sessionByToken.get(token),
         }));
 
         const { error: seqError } = await supabase.from("exam_sequence_items").insert(sequenceItems);
         if (seqError) throw seqError;
 
-        tokens.push(token);
+        deployed.push(...questions.map(({ token, clinicalCase, questionNumber }) => ({
+          token,
+          pcNumber: pc + 1,
+          questionNumber,
+          questionTotal: selectedCases.length,
+          caseTitle: clinicalCase.title,
+        })));
       }
 
-      return tokens;
+      return deployed;
     },
-    onSuccess: (tokens) => {
+    onSuccess: (stations) => {
       queryClient.invalidateQueries({ queryKey: ["exam_sessions"] });
       queryClient.invalidateQueries({ queryKey: ["deployed_stations"] });
-      setDeployedTokens(tokens);
+      setDeployedStations(stations);
       setShowResults(true);
       setSelectedCases([]);
       setPcCount(1);
@@ -125,44 +153,50 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
           />
 
           {selectedCases.length > 0 && (
-            <div className="flex items-center gap-3 pt-2">
-              <div className="flex items-center gap-2">
-                <Monitor className="h-4 w-4 text-muted-foreground" />
-                <label className="text-sm font-medium">Jumlah PC/Monitor:</label>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setPcCount((v) => Math.max(1, v - 1))}
-                    disabled={pcCount <= 1}
-                  >
-                    <span className="text-lg leading-none">−</span>
-                  </Button>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={pcCount || ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "") { setPcCount(0); return; }
-                      const num = parseInt(val);
-                      if (!isNaN(num)) setPcCount(Math.min(50, num));
-                    }}
-                    className="w-16 text-center"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setPcCount((v) => Math.min(50, v + 1))}
-                    disabled={pcCount >= 50}
-                  >
-                    <span className="text-lg leading-none">+</span>
-                  </Button>
+            <div className="space-y-2 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Akan dibuat {pcCount * selectedCases.length} kode station ({pcCount} PC × {selectedCases.length} soal).
+                Setiap soal memiliki kode dan URL sendiri.
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-muted-foreground" />
+                  <label className="text-sm font-medium">Jumlah PC/Monitor:</label>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setPcCount((v) => Math.max(1, v - 1))}
+                      disabled={pcCount <= 1}
+                    >
+                      <span className="text-lg leading-none">−</span>
+                    </Button>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={pcCount || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "") { setPcCount(0); return; }
+                        const num = parseInt(val);
+                        if (!isNaN(num)) setPcCount(Math.min(50, num));
+                      }}
+                      className="w-16 text-center"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setPcCount((v) => Math.min(50, v + 1))}
+                      disabled={pcCount >= 50}
+                    >
+                      <span className="text-lg leading-none">+</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -174,8 +208,8 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
             className="w-full sm:w-auto"
           >
             <Rocket className="h-4 w-4 mr-2" />
-            Deploy {pcCount > 1 ? `${pcCount} Session ${modeLabel}` : `Session ${modeLabel}`}
-            {selectedCases.length > 1 ? ` (${selectedCases.length} ujian)` : ""}
+            Deploy {pcCount * selectedCases.length} Station {modeLabel}
+            {selectedCases.length > 1 ? ` (${selectedCases.length} soal/PC)` : ""}
           </Button>
         </CardContent>
       </Card>
@@ -185,12 +219,13 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       <Dialog open={showResults} onOpenChange={setShowResults}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Station Deployed! 🚀</DialogTitle>
+            <DialogTitle>Station Berhasil Di-deploy! 🚀</DialogTitle>
             <DialogDescription>
-              {deployedTokens.length} station berhasil di-deploy. Ketik kode di browser PC station.
+              {deployedStations.length} station berhasil di-deploy. Buka URL soal pertama untuk setiap PC;
+              layar akan berpindah otomatis ke token soal berikutnya.
             </DialogDescription>
           </DialogHeader>
-          <StationDeployResults tokens={deployedTokens} />
+          <StationDeployResults stations={deployedStations} />
         </DialogContent>
       </Dialog>
     </div>

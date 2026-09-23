@@ -2,16 +2,24 @@ import { Button } from "@/components/ui/button";
 import { Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface StationDeployResultsProps {
-  tokens: string[];
+export interface DeployedStationToken {
+  token: string;
+  pcNumber: number;
+  questionNumber: number;
+  questionTotal: number;
+  caseTitle: string;
 }
 
-const StationDeployResults = ({ tokens }: StationDeployResultsProps) => {
+interface StationDeployResultsProps {
+  stations: DeployedStationToken[];
+}
+
+const StationDeployResults = ({ stations }: StationDeployResultsProps) => {
   const { toast } = useToast();
 
   const copyUrl = (token: string) => {
     navigator.clipboard.writeText(`${window.location.origin}/station/${token}`);
-    toast({ title: "URL copied!" });
+    toast({ title: "URL disalin!" });
   };
 
   const copyCode = (token: string) => {
@@ -20,23 +28,33 @@ const StationDeployResults = ({ tokens }: StationDeployResultsProps) => {
   };
 
   return (
-    <div className="space-y-3">
-      {tokens.map((token, i) => (
-        <div key={token} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30">
-          {tokens.length > 1 && (
-            <span className="text-xs text-muted-foreground font-medium">PC {i + 1}</span>
-          )}
-          <span className="font-mono text-xl font-bold tracking-widest text-foreground flex-1">
-            {token}
-          </span>
-          <Button variant="outline" size="sm" onClick={() => copyCode(token)}>
-            <Copy className="h-3.5 w-3.5 mr-1" />
-            Kode
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => copyUrl(token)}>
-            <Copy className="h-3.5 w-3.5 mr-1" />
-            URL
-          </Button>
+    <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+      {stations.map((station) => (
+        <div key={station.token} className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                PC {station.pcNumber} · Soal {station.questionNumber}/{station.questionTotal}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{station.caseTitle}</p>
+            </div>
+            <span className="font-mono text-xl font-bold tracking-widest text-foreground">
+              {station.token}
+            </span>
+          </div>
+          <p className="break-all text-xs text-muted-foreground">
+            {`${window.location.origin}/station/${station.token}`}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => copyCode(station.token)}>
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Kode
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => copyUrl(station.token)}>
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              URL
+            </Button>
+          </div>
         </div>
       ))}
     </div>

@@ -3,8 +3,13 @@ import { useParams } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-const ExamCompleted = () => {
-  const { sessionId } = useParams<{ sessionId: string }>();
+interface ExamCompletedProps {
+  sessionIdOverride?: string;
+}
+
+const ExamCompleted = ({ sessionIdOverride }: ExamCompletedProps) => {
+  const { sessionId: routeSessionId } = useParams<{ sessionId: string }>();
+  const sessionId = sessionIdOverride ?? routeSessionId;
   const [hasNextExam, setHasNextExam] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -19,19 +24,26 @@ const ExamCompleted = () => {
 
       if (!session) { setHasNextExam(false); return; }
 
-      // Check if this token has sequence items
+      const { data: tokenItem } = await supabase
+        .from("exam_sequence_items")
+        .select("deployment_id, sequence_order, session_id")
+        .eq("station_token", session.station_token)
+        .maybeSingle();
+
+      if (!tokenItem) { setHasNextExam(false); return; }
+
       const { data: items } = await supabase
         .from("exam_sequence_items")
         .select("sequence_order, session_id")
-        .eq("station_token", session.station_token)
+        .eq("deployment_id", tokenItem.deployment_id)
         .order("sequence_order", { ascending: true });
 
-      if (!items || items.length <= 1) { setHasNextExam(false); return; }
+      if (!items || items.length === 0) { setHasNextExam(false); return; }
 
       // Find current item and check if there's a next one
-      const currentItem = items.find((i: any) => i.session_id === sessionId);
+      const currentItem = items.find((item) => item.session_id === sessionId);
       if (currentItem) {
-        const hasNext = items.some((i: any) => i.sequence_order > (currentItem as any).sequence_order);
+        const hasNext = items.some((item) => item.sequence_order > currentItem.sequence_order);
         setHasNextExam(hasNext);
       } else {
         setHasNextExam(false);
