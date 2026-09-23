@@ -3,6 +3,12 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { matchesKeywords } from "@/lib/keywordMatcher";
 import { generateBookingCode } from "@/lib/bookingCode";
+import {
+  decideStationCompletion,
+  resolveStationSequenceInfo,
+  STATION_ADVANCE_COUNTDOWN_SECONDS,
+  type StationSequenceInfo,
+} from "@/lib/stationSequence";
 import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
@@ -32,10 +38,11 @@ interface AssetData {
   trigger_keywords: string[];
 }
 
-interface SequenceInfo {
-  currentOrder: number;
-  total: number;
-}
+type SequenceLookup = {
+  sessionId: string | null;
+  status: "idle" | "loading" | "resolved" | "error";
+  info: StationSequenceInfo | null;
+};
 
 const StationDisplay = () => {
   const { token } = useParams<{ token: string }>();
@@ -48,29 +55,62 @@ const StationDisplay = () => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [currentToken, setCurrentToken] = useState(token);
   const regeneratingRef = useRef(false);
-  const [sequenceInfo, setSequenceInfo] = useState<SequenceInfo | null>(null);
+  const pendingAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completedHandledRef = useRef<string | null>(null);
+  const [countdown, setCountdown] = useState(STATION_ADVANCE_COUNTDOWN_SECONDS);
+  const [completionAttempt, setCompletionAttempt] = useState(0);
+  const [sequenceLookup, setSequenceLookup] = useState<SequenceLookup>({
+    sessionId: null,
+    status: "idle",
+    info: null,
+  });
 
-  // Load sequence info for current token
+  const sequenceInfo =
+    sequenceLookup.status === "resolved" && sequenceLookup.sessionId === (session?.id ?? null)
+      ? sequenceLookup.info
+      : null;
+
+  const resolveSequenceState = useCallback(async (
+    stationToken: string,
+    displayedSessionId: string | null
+  ): Promise<StationSequenceInfo | null> => {
+    const { data, error } = await supabase
+      .from("exam_sequence_items")
+      .select("sequence_order, session_id")
+      .eq("station_token", stationToken)
+      .order("sequence_order", { ascending: true });
+
+    if (error) throw error;
+    return resolveStationSequenceInfo(data ?? [], displayedSessionId, stationToken);
+  }, []);
+
+  // Resolve sequence order against the session actually displayed, not cached UI order.
   useEffect(() => {
-    if (!currentToken) return;
-    const fetchSequence = async () => {
-      const { data } = await supabase
-        .from("exam_sequence_items")
-        .select("id, sequence_order, session_id")
-        .eq("station_token", currentToken)
-        .order("sequence_order", { ascending: true });
+    if (!currentToken || state === "sequence_complete") return;
 
-      if (data && data.length > 0) {
-        // Find current order based on which item has the active/latest session
-        const total = data.length;
-        // Find the item whose session matches our current session, or default to first
-        setSequenceInfo((prev) => ({ currentOrder: prev?.currentOrder || 1, total }));
-      } else {
-        setSequenceInfo(null);
+    let cancelled = false;
+    const displayedSessionId = session?.id ?? null;
+    setSequenceLookup({ sessionId: displayedSessionId, status: "loading", info: null });
+
+    const fetchSequence = async () => {
+      try {
+        const info = await resolveSequenceState(currentToken, displayedSessionId);
+        if (!cancelled) {
+          setSequenceLookup({ sessionId: displayedSessionId, status: "resolved", info });
+        }
+      } catch (error) {
+        console.error("Sequence lookup failed:", error);
+        if (!cancelled) {
+          setSequenceLookup({ sessionId: displayedSessionId, status: "error", info: null });
+        }
       }
     };
-    fetchSequence();
-  }, [currentToken]);
+
+    void fetchSequence();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentToken, session?.id, state, resolveSequenceState]);
 
   // Fetch session by token
   useEffect(() => {
@@ -85,64 +125,87 @@ const StationDisplay = () => {
       if (sessionRow.status === "active") setState("active");
       else if (sessionRow.status === "completed" || sessionRow.status === "force_closed") {
         setState("completed_screen");
-        setTimeout(() => handleSessionCompleted(sessionRow.case_id), 5000);
       }
       else setState("waiting");
     };
-    fetchSession();
+    void fetchSession();
   }, [currentToken]);
 
   // After exam completes, advance sequence or regenerate same case
-  const handleSessionCompleted = useCallback(async (caseId: string) => {
-    if (regeneratingRef.current) return;
+  const handleSessionCompleted = useCallback(async (
+    caseId: string,
+    completedSessionId: string,
+    stationToken: string
+  ): Promise<boolean> => {
+    if (regeneratingRef.current) return false;
     regeneratingRef.current = true;
 
     try {
-      // Check if this is part of a sequence
-      if (sequenceInfo && sequenceInfo.total > 0) {
-        const currentOrder = sequenceInfo.currentOrder;
+      // Resolve again at completion time so a stale/null render can never choose legacy mode.
+      const freshSequence = await resolveSequenceState(stationToken, completedSessionId);
+      setSequenceLookup({
+        sessionId: completedSessionId,
+        status: "resolved",
+        info: freshSequence,
+      });
 
-        if (currentOrder < sequenceInfo.total) {
+      if (freshSequence) {
+        const decision = decideStationCompletion(freshSequence);
+
+        if (decision.kind === "advance") {
           // Advance to next in sequence
-          const { data, error } = await (supabase.rpc as any)('advance_station_sequence', {
-            _station_token: currentToken,
-            _completed_sequence_order: currentOrder,
+          const { data, error } = await supabase.rpc("advance_station_sequence", {
+            _station_token: freshSequence.token,
+            _completed_sequence_order: freshSequence.currentOrder,
           });
 
           if (error) {
             console.error("Advance sequence failed:", error);
-            regeneratingRef.current = false;
-            return;
+            return false;
           }
 
-          if (data && data.length > 0) {
-            const next = data[0];
-            setSession({ id: next.next_id, case_id: next.next_case_id, status: 'waiting', session_start_time: null });
-            setSequenceInfo({ currentOrder: next.next_sequence_order, total: sequenceInfo.total });
+          const next = data?.[0];
+          if (next?.next_id) {
+            setSession({
+              id: next.next_id,
+              case_id: next.next_case_id,
+              status: next.next_status,
+              session_start_time: next.next_session_start_time,
+            });
+            setSequenceLookup({
+              sessionId: next.next_id,
+              status: "resolved",
+              info: {
+                token: freshSequence.token,
+                currentOrder: next.next_sequence_order,
+                total: freshSequence.total,
+                currentSessionId: next.next_id,
+              },
+            });
             setActiveAsset(null);
             setCaseData(null);
-            setState("waiting");
-            regeneratingRef.current = false;
-            return;
+            setState(next.next_status === "active" ? "active" : "waiting");
+            return true;
           }
+
+          console.error("Advance sequence returned no next session");
+          return false;
         }
 
         // No more exams in sequence
         setState("sequence_complete");
-        regeneratingRef.current = false;
-        return;
+        return true;
       }
 
-      // Not a sequence — regenerate same case (legacy behavior)
+      // A successful fresh lookup proved this is not a sequence: keep legacy behavior.
       const newToken = generateBookingCode();
-      const { data, error } = await (supabase.rpc as any)('regenerate_station_session', {
+      const { data, error } = await supabase.rpc("regenerate_station_session", {
         _case_id: caseId,
         _new_token: newToken,
       });
       if (error || !data?.[0]) {
         console.error("Regenerate session failed:", error);
-        regeneratingRef.current = false;
-        return;
+        return false;
       }
       setSession(data[0]);
       setCurrentToken(newToken);
@@ -150,47 +213,131 @@ const StationDisplay = () => {
       setCaseData(null);
       setState("waiting");
       window.history.replaceState(null, "", `/station/${newToken}`);
-      regeneratingRef.current = false;
+      return true;
     } catch (e) {
       console.error("Failed to handle session completion:", e);
+      return false;
+    } finally {
       regeneratingRef.current = false;
     }
-  }, [currentToken, sequenceInfo]);
+  }, [resolveSequenceState]);
 
   // Subscribe to session changes + polling fallback
   useEffect(() => {
     if (!session?.id) return;
+    const displayedSessionId = session.id;
 
-    const updateFromRow = (updated: any) => {
+    const updateFromRow = (updated: Pick<SessionData, "status" | "session_start_time">) => {
       if (regeneratingRef.current) return;
       setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
       if (updated.status === "active") setState("active");
       else if (updated.status === "completed" || updated.status === "force_closed") {
         setState("completed_screen");
-        if (session?.case_id) {
-          setTimeout(() => handleSessionCompleted(session.case_id), 5000);
-        }
       }
     };
 
     const channel = supabase
-      .channel(`session-status-${session.id}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "exam_sessions", filter: `id=eq.${session.id}` }, (payload) => {
-        updateFromRow(payload.new);
+      .channel(`session-status-${displayedSessionId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "exam_sessions", filter: `id=eq.${displayedSessionId}` }, (payload) => {
+        updateFromRow(payload.new as Pick<SessionData, "status" | "session_start_time">);
       })
       .subscribe();
 
     const pollInterval = setInterval(async () => {
       const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
       const row = Array.isArray(data) ? data?.[0] : data;
-      if (row) updateFromRow(row);
+      // One token spans the sequence. Ignore a newer session until this display advances.
+      if (row?.id === displayedSessionId) updateFromRow(row);
     }, 3000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, [session?.id, session?.case_id, currentToken, handleSessionCompleted]);
+  }, [session?.id, currentToken]);
+
+  const resolvedCompletionDecision = sequenceLookup.status === "resolved"
+    ? decideStationCompletion(sequenceLookup.info)
+    : null;
+  const completionKind = sequenceLookup.status === "error"
+    ? "retry"
+    : resolvedCompletionDecision?.kind ?? null;
+  const completionCountdownSeconds = completionKind && completionKind !== "sequence_complete"
+    ? STATION_ADVANCE_COUNTDOWN_SECONDS
+    : null;
+  const completionSessionId = session?.id;
+  const completionCaseId = session?.case_id;
+
+  // The visible countdown is the single owner of completion timing and advancement.
+  useEffect(() => {
+    if (state !== "completed_screen" || !completionSessionId || !completionCaseId || !currentToken) return;
+    if (sequenceLookup.sessionId !== completionSessionId || !completionKind) return;
+
+    if (completionKind === "sequence_complete") {
+      setState("sequence_complete");
+      return;
+    }
+
+    if (!completionCountdownSeconds || completedHandledRef.current === completionSessionId) return;
+    if (pendingAdvanceRef.current) clearTimeout(pendingAdvanceRef.current);
+
+    const completedSessionId = completionSessionId;
+    const completedCaseId = completionCaseId;
+    const stationToken = currentToken;
+    let remaining = completionCountdownSeconds;
+    setCountdown(remaining);
+
+    const countdownInterval = setInterval(() => {
+      remaining = Math.max(remaining - 1, 0);
+      setCountdown(remaining);
+    }, 1000);
+
+    const advanceTimeout = setTimeout(async () => {
+      clearInterval(countdownInterval);
+      pendingAdvanceRef.current = null;
+      setCountdown(0);
+
+      if (completedHandledRef.current === completedSessionId) return;
+      completedHandledRef.current = completedSessionId;
+
+      const completed = await handleSessionCompleted(
+        completedCaseId,
+        completedSessionId,
+        stationToken
+      );
+      if (!completed) {
+        completedHandledRef.current = null;
+        setSequenceLookup((previous) => previous.sessionId === completedSessionId
+          ? { ...previous, status: "error" }
+          : previous
+        );
+        setCompletionAttempt((attempt) => attempt + 1);
+      }
+    }, completionCountdownSeconds * 1000);
+    pendingAdvanceRef.current = advanceTimeout;
+
+    return () => {
+      clearInterval(countdownInterval);
+      clearTimeout(advanceTimeout);
+      if (pendingAdvanceRef.current === advanceTimeout) {
+        pendingAdvanceRef.current = null;
+      }
+    };
+  }, [
+    completionAttempt,
+    completionCaseId,
+    completionCountdownSeconds,
+    completionKind,
+    completionSessionId,
+    currentToken,
+    handleSessionCompleted,
+    sequenceLookup.sessionId,
+    state,
+  ]);
+
+  useEffect(() => () => {
+    if (pendingAdvanceRef.current) clearTimeout(pendingAdvanceRef.current);
+  }, []);
 
   // Fetch case data and assets when active
   useEffect(() => {
@@ -257,6 +404,14 @@ const StationDisplay = () => {
     await supabase.from("exam_sessions").update({ status: "completed" }).eq("id", session.id);
   }, [session?.id]);
 
+  const completionDecision =
+    state === "completed_screen" &&
+    session &&
+    sequenceLookup.sessionId === session.id &&
+    resolvedCompletionDecision
+      ? resolvedCompletionDecision
+      : null;
+
   if (state === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -265,7 +420,7 @@ const StationDisplay = () => {
     );
   }
 
-  if (state === "sequence_complete") {
+  if (state === "sequence_complete" || completionDecision?.kind === "sequence_complete") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center space-y-4">
@@ -290,17 +445,36 @@ const StationDisplay = () => {
   }
 
   if (state === "completed_screen") {
+    const countdownIsReady =
+      sequenceLookup.sessionId === session?.id &&
+      (sequenceLookup.status === "resolved" || sequenceLookup.status === "error");
+
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center space-y-4">
           <div className="text-6xl">✅</div>
           <h1 className="text-4xl font-bold text-foreground">Ujian Selesai</h1>
-          {sequenceInfo && sequenceInfo.currentOrder < sequenceInfo.total ? (
-            <p className="text-xl text-muted-foreground">
-              Ujian {sequenceInfo.currentOrder} / {sequenceInfo.total} selesai. Ujian berikutnya akan dimulai...
-            </p>
+          {completionDecision?.kind === "advance" ? (
+            <>
+              <p className="text-xl text-muted-foreground">
+                Ujian {sequenceInfo?.currentOrder} / {sequenceInfo?.total} selesai.
+              </p>
+              <div className="text-7xl font-bold text-foreground tabular-nums">{countdown}</div>
+              <p className="text-xl text-muted-foreground">
+                Soal berikutnya dimulai dalam {countdown} detik
+              </p>
+            </>
+          ) : countdownIsReady ? (
+            <>
+              <div className="text-7xl font-bold text-foreground tabular-nums">{countdown}</div>
+              <p className="text-xl text-muted-foreground">
+                {sequenceLookup.status === "error"
+                  ? `Mencoba menyiapkan sesi berikutnya dalam ${countdown} detik`
+                  : `Sesi baru akan dimulai dalam ${countdown} detik`}
+              </p>
+            </>
           ) : (
-            <p className="text-xl text-muted-foreground">Sesi baru akan dimulai dalam beberapa detik...</p>
+            <p className="text-xl text-muted-foreground">Menyiapkan sesi berikutnya...</p>
           )}
         </div>
       </div>
