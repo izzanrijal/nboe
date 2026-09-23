@@ -20,15 +20,17 @@ export interface RubricData {
 interface RubricBuilderProps {
   data: RubricData;
   onChange: (data: RubricData) => void;
+  disabled?: boolean;
 }
 
-const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
+const RubricBuilder = ({ data, onChange, disabled = false }: RubricBuilderProps) => {
   const [newText, setNewText] = useState("");
   const [newPoints, setNewPoints] = useState(10);
 
   const totalPoints = data.items.reduce((sum, item) => sum + item.points, 0);
 
   const addItem = () => {
+    if (disabled) return;
     const trimmed = newText.trim();
     if (!trimmed) return;
     onChange({
@@ -40,10 +42,12 @@ const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
   };
 
   const removeItem = (index: number) => {
+    if (disabled) return;
     onChange({ ...data, items: data.items.filter((_, i) => i !== index) });
   };
 
   const updateItem = (index: number, updates: Partial<RubricItem>) => {
+    if (disabled) return;
     onChange({
       ...data,
       items: data.items.map((item, i) => (i === index ? { ...item, ...updates } : item)),
@@ -56,9 +60,19 @@ const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
         <Label>Penilaian Berdasarkan Daftar Tilik</Label>
         <Switch
           checked={data.enabled}
-          onCheckedChange={(enabled) => onChange({ ...data, enabled })}
+          onCheckedChange={(enabled) => {
+            if (!disabled) onChange({ ...data, enabled });
+          }}
+          disabled={disabled}
+          className={disabled ? "opacity-60" : undefined}
         />
       </div>
+
+      {disabled && (
+        <p className="text-xs text-muted-foreground">
+          Hanya lihat — daftar tilik tidak dapat diubah
+        </p>
+      )}
 
       {data.enabled && (
         <div className="space-y-3 rounded-md border border-border p-3">
@@ -70,6 +84,7 @@ const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
               placeholder="Tambah item daftar tilik..."
               className="flex-1"
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addItem())}
+              disabled={disabled}
             />
             <Input
               type="number"
@@ -78,8 +93,16 @@ const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
               onChange={(e) => setNewPoints(Number(e.target.value))}
               className="w-20"
               placeholder="Poin"
+              disabled={disabled}
             />
-            <Button type="button" variant="secondary" size="icon" onClick={addItem}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={addItem}
+              disabled={disabled}
+              aria-label="Tambah item daftar tilik"
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -98,10 +121,17 @@ const RubricBuilder = ({ data, onChange }: RubricBuilderProps) => {
                     <Checkbox
                       checked={item.isCritical}
                       onCheckedChange={(checked) => updateItem(i, { isCritical: !!checked })}
+                      disabled={disabled}
                     />
                     <AlertTriangle className={`h-3.5 w-3.5 ${item.isCritical ? "text-destructive" : "text-muted-foreground/40"}`} />
                   </div>
-                  <button type="button" onClick={() => removeItem(i)} className="text-muted-foreground hover:text-destructive">
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    disabled={disabled}
+                    aria-label={`Hapus item daftar tilik ${i + 1}`}
+                    className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                  >
                     <X className="h-4 w-4" />
                   </button>
                 </li>
