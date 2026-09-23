@@ -62,8 +62,10 @@ const ExamActiveView = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCase, setShowCase] = useState(true);
   const [isLastCase, setIsLastCase] = useState(true);
+  const [sequence, setSequence] = useState<{ token: string; order: number; total: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
