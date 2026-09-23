@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import RubricBuilder, { type RubricData } from "@/components/admin/RubricBuilder";
 import AssetUploader from "@/components/admin/AssetUploader";
 import parseRubricData from "@/lib/rubricParser";
+import { canEditCase, isRubricEditable } from "@/lib/casePermissions";
 import { useAuth } from "@/contexts/AuthContext";
 
 
@@ -117,6 +118,13 @@ const CasePreview = () => {
     enabled: !!id,
   });
 
+  const canEdit = canEditCase({
+    isMasterAdmin,
+    createdBy: caseRow?.created_by,
+    userId: user?.id,
+  });
+  const rubricEditable = isRubricEditable({ canEdit, isEditing });
+
   // Sync form ketika data datang
   useEffect(() => {
     if (!caseRow) return;
@@ -180,6 +188,9 @@ const CasePreview = () => {
   // ---- Mutations ----
   const saveMutation = useMutation({
     mutationFn: async (action: "save" | "approve" | "reject") => {
+      if (!canEdit) {
+        throw new Error("Anda tidak memiliki akses untuk mengubah soal ini.");
+      }
       if (!id) throw new Error("Case ID missing");
       const payload: Record<string, unknown> = {
         title,
@@ -237,6 +248,9 @@ const CasePreview = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) {
+        throw new Error("Anda tidak memiliki akses untuk menghapus soal ini.");
+      }
       if (!id) throw new Error("Case ID missing");
       const { error } = await supabase.from("clinical_cases").delete().eq("id", id);
       if (error) throw error;
@@ -291,7 +305,6 @@ const CasePreview = () => {
   const statusMeta = STATUS_LABEL[caseRow.status] ?? STATUS_LABEL.published;
   const needsReview = caseRow.source === "agent_api" && caseRow.status === "draft";
   const isBusy = saveMutation.isPending || deleteMutation.isPending;
-  const canEdit = isMasterAdmin || (!!caseRow.created_by && caseRow.created_by === user?.id);
 
 
   return (
@@ -571,11 +584,16 @@ const CasePreview = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <RubricBuilder data={rubricData} onChange={setRubricData} />
+                {/* Tetap cek ownership walau isEditing suatu saat berubah lewat jalur lain. */}
+                <RubricBuilder
+                  data={rubricData}
+                  onChange={setRubricData}
+                  disabled={!rubricEditable}
+                />
               </CardContent>
             </Card>
 
-            {caseRow.source === "agent_api" && caseRow.status === "published" && (
+            {caseRow.source === "agent_api" && caseRow.status === "published" && canEdit && (
               <Card>
                 <CardHeader>
                   <CardTitle>Media Assets</CardTitle>

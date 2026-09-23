@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Eye, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { canEditCase } from "@/lib/casePermissions";
 import CaseForm from "./CaseForm";
 import AssetUploader from "./AssetUploader";
 import ExcelImporter from "./ExcelImporter";
@@ -43,7 +44,7 @@ const CaseManager = () => {
   const { user, isMasterAdmin } = useAuth();
 
   const canManage = (c: ClinicalCase) =>
-    isMasterAdmin || (!!c.created_by && c.created_by === user?.id);
+    canEditCase({ isMasterAdmin, createdBy: c.created_by, userId: user?.id });
 
   const { data: cases = [], isLoading } = useQuery({
     queryKey: ["clinical_cases"],
