@@ -246,6 +246,30 @@ const ExamActiveView = ({
     [sessionId, persistChat]
   );
 
+  // Prepare (or reuse) the session for the next case in this station's sequence
+  const resolveNextSession = useCallback(async (): Promise<
+    { sessionId: string; sequenceOrder: number } | undefined
+  > => {
+    if (!sequence || isLastCase) return undefined;
+    try {
+      const { data, error } = await (supabase.rpc as any)("advance_station_sequence", {
+        _station_token: sequence.token,
+        _completed_sequence_order: sequence.order,
+      });
+      if (error) {
+        console.error("Advance sequence failed:", error);
+        return undefined;
+      }
+      const next = Array.isArray(data) ? data[0] : null;
+      if (!next?.next_id) return undefined;
+      return { sessionId: next.next_id as string, sequenceOrder: next.next_sequence_order as number };
+    } catch (err) {
+      console.error("Advance sequence error:", err);
+      return undefined;
+    }
+  }, [sequence, isLastCase]);
+
+
   // Complete exam — shared logic (Fix #4: require audio)
   const completeExam = useCallback(async () => {
     if (completingRef.current) return;
