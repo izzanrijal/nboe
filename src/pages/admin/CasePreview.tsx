@@ -70,6 +70,8 @@ const CasePreview = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isMasterAdmin } = useAuth();
+
 
   // ---- State form (di-sync dari DB via useEffect) ----
   const [title, setTitle] = useState("");
