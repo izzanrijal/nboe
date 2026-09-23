@@ -52,9 +52,9 @@ const DeploymentParticipantSelector = ({
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
       <div>
-        <p className="text-sm font-medium text-foreground">Peserta deployment</p>
+        <p className="text-sm font-medium text-foreground">Peserta deployment (opsional)</p>
         <p className="text-xs text-muted-foreground">
-          Case yang pernah diselesaikan oleh salah satu peserta terpilih akan disembunyikan.
+          Pilih peserta untuk menyembunyikan case yang pernah diselesaikan oleh salah satunya.
         </p>
       </div>
 
@@ -135,8 +135,8 @@ const DeploymentParticipantSelector = ({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Belum ada peserta dipilih. Semua case tetap tersedia, tetapi deploy memerlukan minimal satu peserta.
+        <p className="text-xs text-muted-foreground">
+          Tanpa peserta terpilih, semua case pada mode ujian ini tetap tersedia dan dapat di-deploy.
         </p>
       )}
     </div>

@@ -37,12 +37,10 @@ export const getExcludedCaseIds = (
 };
 
 export const getDeploymentValidationError = ({
-  participantIds,
   caseIds,
   pcCount,
   excludedCaseIds = new Set(),
 }: DeploymentValidationInput): string | null => {
-  if (participantIds.length === 0) return "Pilih minimal satu peserta sebelum deploy";
   if (caseIds.length === 0) return "Pilih minimal satu case";
   if (pcCount < 1 || pcCount > 50) return "Jumlah PC harus 1-50";
   if (caseIds.some((caseId) => excludedCaseIds.has(caseId))) {

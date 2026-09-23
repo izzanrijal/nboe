@@ -12,13 +12,31 @@ const history: CompletedCaseHistory[] = [
 ];
 
 describe("deployment participant eligibility", () => {
-  it("keeps all cases available but fails deploy validation when no participant is selected", () => {
+  it("keeps all cases available and allows deploy when no participant is selected", () => {
     expect(getExcludedCaseIds(history, [], "panel_exam")).toEqual(new Set());
     expect(getDeploymentValidationError({
       participantIds: [],
       caseIds: ["panel-a"],
       pcCount: 1,
-    })).toBe("Pilih minimal satu peserta sebelum deploy");
+    })).toBeNull();
+  });
+
+  it("still requires at least one case and a valid PC count", () => {
+    expect(getDeploymentValidationError({
+      participantIds: [],
+      caseIds: [],
+      pcCount: 1,
+    })).toBe("Pilih minimal satu case");
+    expect(getDeploymentValidationError({
+      participantIds: [],
+      caseIds: ["panel-a"],
+      pcCount: 0,
+    })).toBe("Jumlah PC harus 1-50");
+    expect(getDeploymentValidationError({
+      participantIds: [],
+      caseIds: ["panel-a"],
+      pcCount: 51,
+    })).toBe("Jumlah PC harus 1-50");
   });
 
   it("hides a prior Panel case completed by the selected participant", () => {

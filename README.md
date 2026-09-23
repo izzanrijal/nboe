@@ -244,8 +244,9 @@ Catatan penting saat mengubah bagian ini:
 
 Pemilih peserta pada Station Controller hanya dipakai sebagai kriteria filter; peserta
 tidak ditugaskan ke session dan `exam_sessions.current_candidate_id` tetap diisi oleh
-alur klaim kandidat. Tanpa peserta terpilih seluruh case tetap terlihat, tetapi aksi
-deploy divalidasi agar memilih minimal satu peserta.
+alur klaim kandidat. Pemilihan peserta bersifat opsional. Tanpa peserta terpilih,
+seluruh case pada mode ujian aktif tetap tersedia dan deployment tetap dapat dilakukan
+selama minimal satu case dipilih dan jumlah PC valid.
 
 Jika peserta dipilih, riwayat selesai dibaca dari `exam_results`, lalu dipetakan melalui
 `exam_sessions` ke `clinical_cases`. Case pada mode ujian aktif disembunyikan bila
