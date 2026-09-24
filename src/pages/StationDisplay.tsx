@@ -17,6 +17,11 @@ import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import { Badge } from "@/components/ui/badge";
+import { firstRpcRow } from "@/lib/examSequence";
+import {
+  bindExamRealtime,
+  type ExamRealtimeClient,
+} from "@/lib/examRealtime";
 
 type StationState = "loading" | "waiting" | "active" | "completed_screen" | "sequence_complete" | "advance_error";
 
@@ -56,6 +61,7 @@ const StationDisplay = () => {
   const [caseMedia, setCaseMedia] = useState<{ asset_url: string; asset_type: string }[]>([]);
   const [activeAsset, setActiveAsset] = useState<AssetData | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const displayedSessionRef = useRef<string | null>(null);
   const [currentToken, setCurrentToken] = useState(token);
   const regeneratingRef = useRef(false);
   const pendingAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,6 +79,7 @@ const StationDisplay = () => {
     sequenceLookup.status === "resolved" && sequenceLookup.sessionId === (session?.id ?? null)
       ? sequenceLookup.info
       : null;
+  displayedSessionRef.current = session?.id ?? null;
 
   const resolveSequenceState = useCallback(async (
     stationToken: string,
@@ -131,7 +138,7 @@ const StationDisplay = () => {
     const fetchSession = async () => {
       const { data, error } = await supabase.rpc("get_session_by_token", { _token: currentToken });
 
-      const row = Array.isArray(data) ? data[0] : data;
+      const row = firstRpcRow(data);
       if (error || !row) { setState("loading"); return; }
       const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
       setSession(sessionRow);
@@ -178,7 +185,7 @@ const StationDisplay = () => {
             return "transient_error";
           }
 
-          const next = data?.[0];
+          const next = firstRpcRow(data);
           const advanceDecision = decideStationAdvance(next as StationAdvanceRow | null);
           if (advanceDecision.kind === "sequence_complete") {
             setState("sequence_complete");
@@ -232,11 +239,12 @@ const StationDisplay = () => {
         _case_id: caseId,
         _new_token: newToken,
       });
-      if (error || !data?.[0]) {
+      const regenerated = firstRpcRow(data);
+      if (error || !regenerated) {
         console.error("Regenerate session failed:", error);
         return "transient_error";
       }
-      setSession(data[0]);
+      setSession(regenerated);
       setCurrentToken(newToken);
       setActiveAsset(null);
       setCaseData(null);
@@ -251,13 +259,18 @@ const StationDisplay = () => {
     }
   }, [resolveSequenceState]);
 
-  // Subscribe to session changes + polling fallback
+  // Subscribe to session/result/sequence changes + polling fallback. The
+  // session id and deployment id dependencies guarantee cleanup/rebind after
+  // advance, so the listener never remains attached only to the old question.
   useEffect(() => {
     if (!session?.id) return;
     const displayedSessionId = session.id;
 
     const updateFromRow = (updated: Pick<SessionData, "status" | "session_start_time">) => {
-      if (regeneratingRef.current) return;
+      if (
+        regeneratingRef.current ||
+        displayedSessionRef.current !== displayedSessionId
+      ) return;
       setSession((prev) => prev ? { ...prev, status: updated.status, session_start_time: updated.session_start_time } : prev);
       if (updated.status === "active") setState("active");
       else if (updated.status === "completed" || updated.status === "force_closed") {
@@ -265,25 +278,59 @@ const StationDisplay = () => {
       }
     };
 
-    const channel = supabase
-      .channel(`session-status-${displayedSessionId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "exam_sessions", filter: `id=eq.${displayedSessionId}` }, (payload) => {
-        updateFromRow(payload.new as Pick<SessionData, "status" | "session_start_time">);
-      })
-      .subscribe();
+    const refreshSequence = async () => {
+      try {
+        const info = await resolveSequenceState(currentToken, displayedSessionId);
+        setSequenceLookup((previous) => previous.sessionId === displayedSessionId
+          ? { sessionId: displayedSessionId, status: "resolved", info }
+          : previous
+        );
+      } catch (error) {
+        console.warn("Station realtime sequence refresh failed:", error);
+      }
+    };
+    const refreshSession = async () => {
+      const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
+      const row = firstRpcRow(data);
+      if (row?.id === displayedSessionId) updateFromRow(row);
+    };
+
+    const cleanupRealtime = bindExamRealtime(
+      supabase as unknown as ExamRealtimeClient,
+      { sessionId: displayedSessionId, deploymentId: sequenceInfo?.deploymentId },
+      {
+        onChange: ({ table, row }) => {
+          if (table === "exam_sessions") {
+            if (row.id === displayedSessionId && typeof row.status === "string") {
+              updateFromRow(row as unknown as Pick<SessionData, "status" | "session_start_time">);
+            }
+            return;
+          }
+          if (table === "exam_sequence_items") {
+            void refreshSequence();
+          } else if (table === "exam_results") {
+            void refreshSession();
+          }
+        },
+        onStatus: (status, error) => {
+          if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+            console.warn("Station realtime unavailable; polling remains active:", { status, error });
+          }
+        },
+      }
+    );
 
     const pollInterval = setInterval(async () => {
-      const { data } = await supabase.rpc("get_session_by_token", { _token: currentToken });
-      const row = Array.isArray(data) ? data?.[0] : data;
-      // A token identifies exactly one session; ignore stale poll responses.
-      if (row?.id === displayedSessionId) updateFromRow(row);
+      // A token identifies exactly one session; refreshSession ignores stale
+      // responses that arrive after an advance/rebind.
+      await refreshSession();
     }, 3000);
 
     return () => {
-      supabase.removeChannel(channel);
+      cleanupRealtime();
       clearInterval(pollInterval);
     };
-  }, [session?.id, currentToken]);
+  }, [session?.id, currentToken, resolveSequenceState, sequenceInfo?.deploymentId]);
 
   const resolvedCompletionDecision = sequenceLookup.status === "resolved"
     ? decideStationCompletion(sequenceLookup.info)

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,10 +13,17 @@ import { ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   candidateStepAfterResolution,
-  resolveCandidateSequenceRow,
   type NextSessionResolution,
-  type SequenceRpcRow,
 } from "@/lib/examSequence";
+import {
+  claimCandidateSession,
+  loadCandidateSequenceContext,
+  resolveNextCandidateSession,
+} from "@/lib/examSequenceApi";
+import {
+  bindExamRealtime,
+  type ExamRealtimeClient,
+} from "@/lib/examRealtime";
 
 type ExamStep = "gatekeeper" | "reading" | "active" | "next_case" | "timeout_unresolved" | "force_closed" | "completed" | "duplicate_warning";
 
@@ -30,6 +37,13 @@ const ExamMobile = () => {
   const [nextCase, setNextCase] = useState<{ sessionId: string; sequenceOrder: number } | null>(null);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [validating, setValidating] = useState(false);
+  const [deploymentId, setDeploymentId] = useState<string | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState("CONNECTING");
+  const [syncRevision, setSyncRevision] = useState(0);
+  const recoveryInFlightRef = useRef(false);
+  const backgroundRecoveryAttemptsRef = useRef(0);
+  const activeSessionRef = useRef<string | undefined>(activeSessionId);
+  activeSessionRef.current = activeSessionId;
 
   useEffect(() => {
     setActiveSessionId(sessionId);
@@ -64,19 +78,7 @@ const ExamMobile = () => {
 
       try {
         // Use atomic claim RPC — handles race condition + duplicate check
-        const { data, error } = await supabase.rpc('claim_exam_session', {
-          _session_id: sessionId,
-          _candidate_id: user.id,
-        });
-
-        if (error) {
-          console.error("Claim RPC error:", error);
-          toast.error("Gagal memulai sesi. Silakan coba lagi.");
-          setValidating(false);
-          return;
-        }
-
-        const result = data as { success: boolean; reason?: string };
+        const result = await claimCandidateSession(sessionId, user.id);
 
         if (!result.success) {
           if (result.reason === 'duplicate') {
@@ -194,97 +196,58 @@ const ExamMobile = () => {
     []
   );
 
-  const retryTimedOutSequence = useCallback(async () => {
-    if (!activeSessionId || validating) return;
+  const resolvePendingSequence = useCallback(async (showError: boolean) => {
+    if (!activeSessionId || recoveryInFlightRef.current) return false;
 
+    recoveryInFlightRef.current = true;
     setValidating(true);
     try {
-      const { data: session, error: sessionError } = await supabase
-        .from("exam_sessions")
-        .select("station_token")
-        .eq("id", activeSessionId)
-        .maybeSingle();
-      if (sessionError) throw sessionError;
-      if (!session?.station_token) {
-        toast.error("Urutan soal belum tersedia. Silakan coba lagi atau akhiri ujian.");
-        return;
-      }
-
-      const { data: currentItem, error: currentError } = await supabase
-        .from("exam_sequence_items")
-        .select("deployment_id, station_token, sequence_order, session_id")
-        .eq("station_token", session.station_token)
-        .maybeSingle();
-      if (currentError) throw currentError;
-      if (!currentItem) {
-        toast.error("Urutan soal belum tersedia. Silakan coba lagi atau hubungi pengawas.");
-        return;
-      }
-
-      const { data: items, error: itemsError } = await supabase
-        .from("exam_sequence_items")
-        .select("deployment_id, station_token, sequence_order, session_id")
-        .eq("deployment_id", currentItem.deployment_id)
-        .order("sequence_order", { ascending: true });
-      if (itemsError) throw itemsError;
-
-      const current = items?.find(
-        (item) => item.station_token === session.station_token && item.session_id === activeSessionId
-      );
-      if (!current) {
-        toast.error("Urutan soal tidak cocok. Hubungi pengawas.");
-        return;
-      }
-
-      const { data, error } = await supabase.rpc("advance_station_sequence", {
-        _station_token: session.station_token,
-        _completed_sequence_order: current.sequence_order,
-      });
-      if (error) throw error;
-
-      const next = Array.isArray(data) ? data[0] : null;
-      const resolution = resolveCandidateSequenceRow(next as SequenceRpcRow | null);
+      const resolution = await resolveNextCandidateSession(activeSessionId);
       const nextStep = candidateStepAfterResolution(resolution);
 
       if (nextStep === "completed") {
         setStep("completed");
-        return;
+        return true;
       }
-      if (nextStep !== "next_case" || !("next" in resolution)) {
-        toast.error("Soal berikutnya belum dapat disiapkan. Silakan coba lagi.");
-        return;
+      if (nextStep === "next_case" && "next" in resolution) {
+        setNextCase(resolution.next);
+        setStep("next_case");
+        return true;
       }
 
-      setNextCase(resolution.next);
-      setStep("next_case");
+      if (showError) {
+        toast.error("Sinkronisasi soal berikutnya belum berhasil. Periksa koneksi, coba lagi, atau hubungi pengawas.");
+      }
+      return false;
     } catch (err) {
       console.error("Retry sequence resolution failed:", err);
-      toast.error("Gagal menemukan soal berikutnya. Silakan coba lagi.");
+      if (showError) {
+        toast.error("Sinkronisasi soal berikutnya gagal. Periksa koneksi lalu coba lagi atau hubungi pengawas.");
+      }
+      return false;
     } finally {
+      recoveryInFlightRef.current = false;
       setValidating(false);
     }
-  }, [activeSessionId, validating]);
+  }, [activeSessionId]);
+
+  const retryTimedOutSequence = useCallback(() => {
+    void resolvePendingSequence(true);
+  }, [resolvePendingSequence]);
 
   const handleContinueNext = useCallback(async () => {
     if (!nextCase || !user || validating) return;
 
     setValidating(true);
     try {
-      const { data, error } = await supabase.rpc('claim_exam_session', {
-        _session_id: nextCase.sessionId,
-        _candidate_id: user.id,
-      });
-
-      if (error) {
-        console.error("Next session claim RPC error:", error);
-        toast.error("Gagal menyiapkan soal berikutnya. Silakan coba lagi.");
-        return;
-      }
-
-      const result = data as { success: boolean; reason?: string };
+      const result = await claimCandidateSession(nextCase.sessionId, user.id);
       if (!result.success) {
         console.error("Next session claim rejected:", result.reason);
-        toast.error("Gagal menyiapkan soal berikutnya. Silakan coba lagi.");
+        toast.error(
+          result.reason === "already_claimed"
+            ? "Sesi berikutnya sedang digunakan peserta lain. Hubungi pengawas."
+            : "Soal berikutnya belum dapat dibuka. Periksa koneksi lalu coba lagi."
+        );
         return;
       }
 
@@ -301,6 +264,101 @@ const ExamMobile = () => {
       setValidating(false);
     }
   }, [nextCase, user, validating]);
+
+  // Discover the active deployment from the authoritative session mapping.
+  // Re-running on session change also drives realtime cleanup/rebind below.
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let cancelled = false;
+    setDeploymentId(null);
+
+    void loadCandidateSequenceContext(activeSessionId)
+      .then((context) => {
+        if (!cancelled) setDeploymentId(context?.deploymentId ?? null);
+      })
+      .catch((error) => {
+        console.warn("Unable to load realtime sequence scope:", error);
+        if (!cancelled) setRealtimeStatus("FALLBACK");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId]);
+
+  // Database realtime complements (but never replaces) the idempotent RPC.
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const cleanup = bindExamRealtime(
+      supabase as unknown as ExamRealtimeClient,
+      { sessionId: activeSessionId, deploymentId },
+      {
+        onChange: ({ table, row }) => {
+          if (
+            table === "exam_sessions" &&
+            row.id === activeSessionId &&
+            activeSessionRef.current === activeSessionId &&
+            row.status === "force_closed"
+          ) {
+            setStep("force_closed");
+            return;
+          }
+          setSyncRevision((revision) => revision + 1);
+        },
+        onStatus: (status, error) => {
+          if (status === "SUBSCRIBED") {
+            setRealtimeStatus("SUBSCRIBED");
+          } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+            console.warn("Exam realtime unavailable; polling remains active:", { status, error });
+            setRealtimeStatus("FALLBACK");
+          }
+        },
+      }
+    );
+
+    return cleanup;
+  }, [activeSessionId, deploymentId]);
+
+  // Poll even when realtime is healthy (at a slower cadence). This refreshes
+  // the deployment scope and wakes bounded recovery if a websocket event was
+  // delayed or unavailable.
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const context = await loadCandidateSequenceContext(activeSessionId);
+        if (cancelled) return;
+        setDeploymentId((current) => context?.deploymentId ?? current);
+        if (step === "timeout_unresolved") {
+          setSyncRevision((revision) => revision + 1);
+        }
+      } catch (error) {
+        if (!cancelled) console.warn("Exam synchronization poll failed:", error);
+      }
+    };
+    const pollInterval = window.setInterval(
+      () => void poll(),
+      realtimeStatus === "SUBSCRIBED" ? 10000 : 3000
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeSessionId, realtimeStatus, step]);
+
+  useEffect(() => {
+    backgroundRecoveryAttemptsRef.current = 0;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (step !== "timeout_unresolved" || syncRevision === 0) return;
+    if (backgroundRecoveryAttemptsRef.current >= 3) return;
+    backgroundRecoveryAttemptsRef.current += 1;
+    void resolvePendingSequence(false);
+  }, [resolvePendingSequence, step, syncRevision]);
 
 
   if (loading || !user) {
@@ -359,14 +417,11 @@ const ExamMobile = () => {
         <AlertTriangle className="h-16 w-16 text-destructive" />
         <h1 className="text-2xl font-bold text-foreground text-center">Soal Ini Sudah Disimpan</h1>
         <p className="text-muted-foreground text-center max-w-sm">
-          Soal berikutnya belum dapat dipastikan. Coba lagi agar tidak ada soal yang terlewat.
+          Sinkronisasi belum berhasil setelah beberapa percobaan. Periksa koneksi, coba lagi, dan hubungi pengawas bila tombol tetap tidak berhasil.
         </p>
         <div className="flex flex-col w-full max-w-sm gap-3">
           <Button size="lg" onClick={retryTimedOutSequence} disabled={validating}>
             {validating ? "Mencari soal berikutnya..." : "Coba Soal Berikutnya Lagi"}
-          </Button>
-          <Button variant="outline" onClick={() => setStep("completed")} disabled={validating}>
-            Akhiri Ujian
           </Button>
         </div>
       </div>
