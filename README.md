@@ -240,3 +240,17 @@ Catatan penting saat mengubah bagian ini:
   timeout tidak diam-diam mengakhiri ujian di tengah rangkaian.
 - Jalankan `npx vitest run` — `src/test/exam-navigation.test.ts` menjaga regresi alur ini.
 
+### Eligibility case saat deploy
+
+Pemilih peserta pada Station Controller hanya dipakai sebagai kriteria filter; peserta
+tidak ditugaskan ke session dan `exam_sessions.current_candidate_id` tetap diisi oleh
+alur klaim kandidat. Pemilihan peserta bersifat opsional. Tanpa peserta terpilih,
+seluruh case pada mode ujian aktif tetap tersedia dan deployment tetap dapat dilakukan
+selama minimal satu case dipilih dan jumlah PC valid.
+
+Jika peserta dipilih, riwayat selesai dibaca dari `exam_results`, lalu dipetakan melalui
+`exam_sessions` ke `clinical_cases`. Case pada mode ujian aktif disembunyikan bila
+**salah satu** peserta terpilih pernah menyelesaikannya (semantik ANY-selected). Riwayat
+Panel dan Oral Board tidak saling menyaring. Aturan ini diisolasi di
+`src/lib/deploymentEligibility.ts` agar dapat diubah menjadi semantik ALL-selected tanpa
+mengubah komponen picker.
