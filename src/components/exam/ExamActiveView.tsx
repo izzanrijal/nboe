@@ -9,10 +9,12 @@ import { toast } from "sonner";
 import { Mic, MicOff, Monitor, AlertCircle, CheckCircle2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  resolveCandidateSequenceRow,
   type NextSessionResolution,
-  type SequenceRpcRow,
 } from "@/lib/examSequence";
+import {
+  loadCandidateSequenceContext,
+  resolveNextCandidateSession,
+} from "@/lib/examSequenceApi";
 
 import {
   AlertDialog,
@@ -77,7 +79,6 @@ const ExamActiveView = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCase, setShowCase] = useState(true);
   const [isLastCase, setIsLastCase] = useState(true);
-  const [sequence, setSequence] = useState<SequenceInfo | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
 
@@ -98,42 +99,28 @@ const ExamActiveView = ({
   }, [sessionId]);
 
   const checkSequence = useCallback(async (): Promise<SequenceInfo | null> => {
-    const { data: session, error: sessionError } = await supabase
-      .from("exam_sessions")
-      .select("station_token")
-      .eq("id", sessionId)
-      .maybeSingle();
-    if (sessionError) throw sessionError;
-    if (!session?.station_token) return null;
-
-    const { data: currentItem, error: currentError } = await supabase
-      .from("exam_sequence_items")
-      .select("deployment_id, station_token, sequence_order, session_id")
-      .eq("station_token", session.station_token)
-      .maybeSingle();
-    if (currentError) throw currentError;
-    if (!currentItem) return null;
+    const context = await loadCandidateSequenceContext(sessionId);
+    if (!context) return null;
 
     const { data: items, error: itemsError } = await supabase
       .from("exam_sequence_items")
       .select("deployment_id, station_token, sequence_order, session_id")
-      .eq("deployment_id", currentItem.deployment_id)
+      .eq("deployment_id", context.deploymentId)
       .order("sequence_order", { ascending: true });
     if (itemsError) throw itemsError;
     if (!items || items.length === 0) return null;
 
     const current = items.find(
-      (item) => item.station_token === session.station_token && item.session_id === sessionId
+      (item) => item.station_token === context.token && item.session_id === sessionId
     );
     if (!current) return null;
 
     const resolved = {
-      token: session.station_token,
+      token: context.token,
       order: current.sequence_order,
       total: items.length,
       isLast: !items.some((item) => item.sequence_order > current.sequence_order),
     };
-    setSequence(resolved);
     setIsLastCase(resolved.isLast);
     return resolved;
   }, [sessionId]);
@@ -282,26 +269,10 @@ const ExamActiveView = ({
 
   // Prepare (or reuse) the session for the next case in this station's sequence
   const resolveNextSession = useCallback(async (): Promise<NextSessionResolution> => {
-    try {
-      const resolvedSequence = sequence ?? (await checkSequence());
-      // A missing mapping is not proof that the deployment is complete.
-      if (!resolvedSequence) return { outcome: "unresolved" };
-
-      const { data, error } = await supabase.rpc("advance_station_sequence", {
-        _station_token: resolvedSequence.token,
-        _completed_sequence_order: resolvedSequence.order,
-      });
-      if (error) {
-        console.error("Advance sequence failed:", error);
-        return { outcome: "unresolved" };
-      }
-      const next = Array.isArray(data) ? data[0] : null;
-      return resolveCandidateSequenceRow(next as SequenceRpcRow | null);
-    } catch (err) {
-      console.error("Advance sequence error:", err);
-      return { outcome: "unresolved" };
-    }
-  }, [sequence, checkSequence]);
+    // Never trust the cached label lookup for navigation. Each retry reloads
+    // the session -> sequence mapping before invoking the idempotent RPC.
+    return resolveNextCandidateSession(sessionId);
+  }, [sessionId]);
 
 
   // Complete exam — shared logic (Fix #4: require audio)
@@ -311,6 +282,18 @@ const ExamActiveView = ({
     setSubmitting(true);
 
     const submitResult = async (fileName: string | null) => {
+      const { data: existing, error: existingError } = await supabase
+        .from("exam_results")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("candidate_id", candidateId)
+        .maybeSingle();
+      if (existingError) {
+        console.warn("Existing result lookup failed; relying on unique constraint:", existingError);
+      } else if (existing?.id) {
+        return existing.id;
+      }
+
       const { data, error } = await supabase
         .from("exam_results")
         .insert({
@@ -322,8 +305,19 @@ const ExamActiveView = ({
         .maybeSingle();
 
       if (error) {
+        // A concurrent/retried completion can win the unique
+        // (candidate_id, session_id) insert. Reuse it instead of failing.
+        if (error.code === "23505") {
+          const { data: racedResult } = await supabase
+            .from("exam_results")
+            .select("id")
+            .eq("session_id", sessionId)
+            .eq("candidate_id", candidateId)
+            .maybeSingle();
+          return racedResult?.id ?? null;
+        }
         console.error("Result insert error:", error);
-        return;
+        return null;
       }
 
       // Kick off transcription + AI grading (voice-to-text) without blocking the candidate
@@ -334,6 +328,7 @@ const ExamActiveView = ({
             if (evalError) console.warn("Auto evaluation failed:", evalError);
           });
       }
+      return data?.id ?? null;
     };
 
     try {

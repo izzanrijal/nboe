@@ -9,6 +9,7 @@ export interface StationSequenceItem {
 }
 
 export interface StationSequenceInfo {
+  deploymentId: string;
   token: string;
   currentOrder: number;
   total: number;
@@ -48,6 +49,7 @@ export function resolveStationSequenceInfo(
   if (displayedSessionId && currentItem.session_id !== displayedSessionId) return null;
 
   return {
+    deploymentId: currentItem.deployment_id,
     token,
     currentOrder: currentItem.sequence_order,
     total: orderedItems.length,
