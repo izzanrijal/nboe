@@ -24,6 +24,7 @@ import {
   bindExamRealtime,
   type ExamRealtimeClient,
 } from "@/lib/examRealtime";
+import { stopExamAudioStream } from "@/lib/examCleanup";
 
 type ExamStep = "gatekeeper" | "reading" | "active" | "next_case" | "timeout_unresolved" | "force_closed" | "completed" | "duplicate_warning";
 
@@ -43,7 +44,24 @@ const ExamMobile = () => {
   const recoveryInFlightRef = useRef(false);
   const backgroundRecoveryAttemptsRef = useRef(0);
   const activeSessionRef = useRef<string | undefined>(activeSessionId);
+  const audioStreamRef = useRef<MediaStream | null>(audioStream);
+  const realtimeCleanupRef = useRef<(() => void) | null>(null);
+  const pollIntervalRef = useRef<number | null>(null);
   activeSessionRef.current = activeSessionId;
+  audioStreamRef.current = audioStream;
+
+  useEffect(() => {
+    return () => {
+      stopExamAudioStream(audioStreamRef.current);
+      audioStreamRef.current = null;
+      realtimeCleanupRef.current?.();
+      realtimeCleanupRef.current = null;
+      if (pollIntervalRef.current !== null) {
+        window.clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setActiveSessionId(sessionId);
@@ -316,8 +334,14 @@ const ExamMobile = () => {
         },
       }
     );
+    realtimeCleanupRef.current = cleanup;
 
-    return cleanup;
+    return () => {
+      cleanup();
+      if (realtimeCleanupRef.current === cleanup) {
+        realtimeCleanupRef.current = null;
+      }
+    };
   }, [activeSessionId, deploymentId]);
 
   // Poll even when realtime is healthy (at a slower cadence). This refreshes
@@ -342,10 +366,14 @@ const ExamMobile = () => {
       () => void poll(),
       realtimeStatus === "SUBSCRIBED" ? 10000 : 3000
     );
+    pollIntervalRef.current = pollInterval;
 
     return () => {
       cancelled = true;
       window.clearInterval(pollInterval);
+      if (pollIntervalRef.current === pollInterval) {
+        pollIntervalRef.current = null;
+      }
     };
   }, [activeSessionId, realtimeStatus, step]);
 
@@ -359,6 +387,32 @@ const ExamMobile = () => {
     backgroundRecoveryAttemptsRef.current += 1;
     void resolvePendingSequence(false);
   }, [resolvePendingSequence, step, syncRevision]);
+
+  const resetExamState = useCallback(() => {
+    stopExamAudioStream(audioStreamRef.current);
+    audioStreamRef.current = null;
+    setAudioStream(null);
+
+    realtimeCleanupRef.current?.();
+    realtimeCleanupRef.current = null;
+    if (pollIntervalRef.current !== null) {
+      window.clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    activeSessionRef.current = undefined;
+    setActiveSessionId(undefined);
+    setNextCase(null);
+    setCaseInfo(null);
+    setSessionData(null);
+    setDeploymentId(null);
+    setRealtimeStatus("CONNECTING");
+    setSyncRevision(0);
+    setValidating(false);
+    recoveryInFlightRef.current = false;
+    backgroundRecoveryAttemptsRef.current = 0;
+    setStep("gatekeeper");
+  }, []);
 
 
   if (loading || !user) {
@@ -472,7 +526,12 @@ const ExamMobile = () => {
   }
 
   if (step === "completed") {
-    return <ExamCompleted sessionIdOverride={activeSessionId} />;
+    return (
+      <ExamCompleted
+        sessionIdOverride={activeSessionId}
+        onBeforeReturnToMenu={resetExamState}
+      />
+    );
   }
 
   // Fallback: step is "active" but conditions not fully met
