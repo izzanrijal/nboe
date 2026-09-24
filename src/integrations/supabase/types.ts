@@ -378,13 +378,13 @@ export type Database = {
       advance_station_sequence: {
         Args: { _completed_sequence_order: number; _station_token: string }
         Returns: {
-          next_case_id: string | null
-          next_id: string | null
+          next_case_id: string
+          next_id: string
           next_is_last: boolean
-          next_sequence_order: number | null
-          next_session_start_time: string | null
-          next_status: string | null
-          next_station_token: string | null
+          next_sequence_order: number
+          next_session_start_time: string
+          next_station_token: string
+          next_status: string
           outcome: string
         }[]
       }
@@ -419,11 +419,11 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           case_id: string
-          deployment_id: string | null
+          deployment_id: string
           id: string
-          sequence_order: number | null
-          sequence_total: number | null
-          session_start_time: string | null
+          sequence_order: number
+          sequence_total: number
+          session_start_time: string
           status: string
         }[]
       }
