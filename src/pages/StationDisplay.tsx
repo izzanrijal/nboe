@@ -16,7 +16,13 @@ import QRDisplay from "@/components/station/QRDisplay";
 import CasePromptDisplay from "@/components/station/CasePromptDisplay";
 import AssetRenderer from "@/components/station/AssetRenderer";
 import CountdownTimer from "@/components/station/CountdownTimer";
+import StationReadyNextCandidate from "@/components/station/StationReadyNextCandidate";
 import { Badge } from "@/components/ui/badge";
+import {
+  createStationResetGuard,
+  startStationResetCountdown,
+  STATION_RESET_COUNTDOWN_SECONDS,
+} from "@/lib/stationReset";
 import { firstRpcRow } from "@/lib/examSequence";
 import {
   bindExamRealtime,
@@ -61,12 +67,20 @@ const StationDisplay = () => {
   const [caseMedia, setCaseMedia] = useState<{ asset_url: string; asset_type: string }[]>([]);
   const [activeAsset, setActiveAsset] = useState<AssetData | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const broadcastCleanupRef = useRef<(() => void) | null>(null);
+  const stationSubscriptionCleanupRef = useRef<(() => void) | null>(null);
   const displayedSessionRef = useRef<string | null>(null);
   const [currentToken, setCurrentToken] = useState(token);
   const regeneratingRef = useRef(false);
   const pendingAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedHandledRef = useRef<string | null>(null);
+  const completedSequenceRef = useRef<{ token: string; total: number } | null>(null);
+  const stationResetGuardRef = useRef(createStationResetGuard());
+  const stationResetCountdownCleanupRef = useRef<(() => void) | null>(null);
   const [countdown, setCountdown] = useState(STATION_ADVANCE_COUNTDOWN_SECONDS);
+  const [stationResetCountdown, setStationResetCountdown] = useState(STATION_RESET_COUNTDOWN_SECONDS);
+  const [stationResetting, setStationResetting] = useState(false);
+  const [stationResetError, setStationResetError] = useState<string | null>(null);
   const [completionAttempt, setCompletionAttempt] = useState(0);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [sequenceLookup, setSequenceLookup] = useState<SequenceLookup>({
@@ -80,6 +94,25 @@ const StationDisplay = () => {
       ? sequenceLookup.info
       : null;
   displayedSessionRef.current = session?.id ?? null;
+
+  const detachStationRuntime = useCallback(() => {
+    if (pendingAdvanceRef.current) {
+      clearTimeout(pendingAdvanceRef.current);
+      pendingAdvanceRef.current = null;
+    }
+    stationResetCountdownCleanupRef.current?.();
+    stationResetCountdownCleanupRef.current = null;
+    stationSubscriptionCleanupRef.current?.();
+    stationSubscriptionCleanupRef.current = null;
+    broadcastCleanupRef.current?.();
+    broadcastCleanupRef.current = null;
+    channelRef.current = null;
+    displayedSessionRef.current = null;
+    setActiveAsset(null);
+    setAssets([]);
+    setCaseMedia([]);
+    setCaseData(null);
+  }, []);
 
   const resolveSequenceState = useCallback(async (
     stationToken: string,
@@ -135,10 +168,12 @@ const StationDisplay = () => {
   // Fetch session by token
   useEffect(() => {
     if (!currentToken) return;
+    let cancelled = false;
     const fetchSession = async () => {
       const { data, error } = await supabase.rpc("get_session_by_token", { _token: currentToken });
 
       const row = firstRpcRow(data);
+      if (cancelled) return;
       if (error || !row) { setState("loading"); return; }
       const sessionRow = row as { id: string; case_id: string; status: string; session_start_time: string | null };
       setSession(sessionRow);
@@ -149,6 +184,9 @@ const StationDisplay = () => {
       else setState("waiting");
     };
     void fetchSession();
+    return () => {
+      cancelled = true;
+    };
   }, [currentToken]);
 
   // After exam completes, advance sequence or regenerate same case
@@ -188,6 +226,18 @@ const StationDisplay = () => {
           const next = firstRpcRow(data);
           const advanceDecision = decideStationAdvance(next as StationAdvanceRow | null);
           if (advanceDecision.kind === "sequence_complete") {
+            completedSequenceRef.current = {
+              token: stationToken,
+              total: freshSequence.total,
+            };
+            detachStationRuntime();
+            setSession(null);
+            setSequenceLookup({ sessionId: null, status: "idle", info: null });
+            setCompletionAttempt(0);
+            setAdvanceError(null);
+            completedHandledRef.current = null;
+            setStationResetCountdown(STATION_RESET_COUNTDOWN_SECONDS);
+            setStationResetError(null);
             setState("sequence_complete");
             return "success";
           }
@@ -257,7 +307,7 @@ const StationDisplay = () => {
     } finally {
       regeneratingRef.current = false;
     }
-  }, [resolveSequenceState]);
+  }, [detachStationRuntime, resolveSequenceState]);
 
   // Subscribe to session/result/sequence changes + polling fallback. The
   // session id and deployment id dependencies guarantee cleanup/rebind after
@@ -326,11 +376,88 @@ const StationDisplay = () => {
       await refreshSession();
     }, 3000);
 
-    return () => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       cleanupRealtime();
       clearInterval(pollInterval);
+      if (stationSubscriptionCleanupRef.current === cleanup) {
+        stationSubscriptionCleanupRef.current = null;
+      }
     };
+    stationSubscriptionCleanupRef.current = cleanup;
+    return cleanup;
   }, [session?.id, currentToken, resolveSequenceState, sequenceInfo?.deploymentId]);
+
+  const resetStationForNextCandidate = useCallback(async () => {
+    if (!stationResetGuardRef.current.tryStart()) return;
+
+    setStationResetting(true);
+    setStationResetError(null);
+    detachStationRuntime();
+
+    try {
+      const completedSequence = completedSequenceRef.current;
+      if (!completedSequence) throw new Error("Data rangkaian station tidak tersedia");
+
+      const usedTokens = new Set<string>();
+      const newTokens = Array.from({ length: completedSequence.total }, () => {
+        let nextToken = generateBookingCode();
+        while (usedTokens.has(nextToken)) nextToken = generateBookingCode();
+        usedTokens.add(nextToken);
+        return nextToken;
+      });
+
+      const { data, error } = await supabase.rpc("reset_completed_station_sequence", {
+        _station_token: completedSequence.token,
+        _new_tokens: newTokens,
+      });
+      const nextSession = firstRpcRow(data);
+      if (error || !nextSession) throw error ?? new Error("Reset station tidak menghasilkan sesi baru");
+
+      const waitingSession: SessionData = {
+        id: nextSession.id,
+        case_id: nextSession.case_id,
+        status: nextSession.status,
+        session_start_time: nextSession.session_start_time,
+      };
+      completedSequenceRef.current = null;
+      completedHandledRef.current = null;
+      setCompletionAttempt(0);
+      setAdvanceError(null);
+      setSequenceLookup({ sessionId: waitingSession.id, status: "loading", info: null });
+      setCurrentToken(nextSession.station_token);
+      setSession(waitingSession);
+      displayedSessionRef.current = waitingSession.id;
+      window.history.replaceState(null, "", `/station/${nextSession.station_token}`);
+      setState("waiting");
+    } catch (error) {
+      console.error("Failed to reset completed station:", error);
+      setStationResetCountdown(0);
+      setStationResetError("Gagal menyiapkan QR baru. Silakan coba lagi atau hubungi pengawas.");
+    } finally {
+      stationResetGuardRef.current.release();
+      setStationResetting(false);
+    }
+  }, [detachStationRuntime]);
+
+  useEffect(() => {
+    if (state !== "sequence_complete") return;
+
+    const cleanup = startStationResetCountdown(
+      setStationResetCountdown,
+      () => void resetStationForNextCandidate(),
+    );
+    stationResetCountdownCleanupRef.current = cleanup;
+
+    return () => {
+      cleanup();
+      if (stationResetCountdownCleanupRef.current === cleanup) {
+        stationResetCountdownCleanupRef.current = null;
+      }
+    };
+  }, [resetStationForNextCandidate, state]);
 
   const resolvedCompletionDecision = sequenceLookup.status === "resolved"
     ? decideStationCompletion(sequenceLookup.info)
@@ -419,6 +546,9 @@ const StationDisplay = () => {
 
   useEffect(() => () => {
     if (pendingAdvanceRef.current) clearTimeout(pendingAdvanceRef.current);
+    stationResetCountdownCleanupRef.current?.();
+    stationSubscriptionCleanupRef.current?.();
+    broadcastCleanupRef.current?.();
   }, []);
 
   useEffect(() => {
@@ -430,18 +560,22 @@ const StationDisplay = () => {
   // Fetch case data and assets when active
   useEffect(() => {
     if (state !== "active" || !session?.case_id) return;
+    let cancelled = false;
     const fetchCase = async () => {
       const { data } = await supabase.rpc("get_case_display", { _case_id: session.case_id });
       const row = Array.isArray(data) ? data[0] : data;
-      if (row) setCaseData(row as any);
+      if (cancelled) return;
+      setCaseData(row ? row as CaseData : null);
       const { data: assetData } = await supabase.rpc("get_case_assets_for_display", { _case_id: session.case_id });
+      if (cancelled) return;
       const assetRows = Array.isArray(assetData) ? assetData : [];
-      if (assetRows.length) {
-        setAssets(assetRows.filter((a: any) => a.category === "examination"));
-        setCaseMedia(assetRows.filter((a: any) => a.category === "case_media"));
-      }
+      setAssets(assetRows.filter((a: AssetData & { category: string }) => a.category === "examination"));
+      setCaseMedia(assetRows.filter((a: AssetData & { category: string }) => a.category === "case_media"));
     };
-    fetchCase();
+    void fetchCase();
+    return () => {
+      cancelled = true;
+    };
   }, [state, session?.case_id]);
 
   // Subscribe to broadcast channel
@@ -481,10 +615,16 @@ const StationDisplay = () => {
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      void supabase.removeChannel(channel);
+      if (channelRef.current === channel) channelRef.current = null;
+      if (broadcastCleanupRef.current === cleanup) broadcastCleanupRef.current = null;
     };
+    broadcastCleanupRef.current = cleanup;
+    return cleanup;
   }, [state, session?.id, assets]);
 
   const handleTimerComplete = useCallback(async () => {
@@ -510,15 +650,12 @@ const StationDisplay = () => {
 
   if (state === "sequence_complete") {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="text-center space-y-4">
-          <div className="text-6xl">🎉</div>
-          <h1 className="text-4xl font-bold text-foreground">Semua Ujian Selesai</h1>
-          <p className="text-xl text-muted-foreground">
-            Seluruh rangkaian {sequenceInfo?.total || ""} ujian telah selesai dilaksanakan.
-          </p>
-        </div>
-      </div>
+      <StationReadyNextCandidate
+        countdown={stationResetCountdown}
+        isResetting={stationResetting}
+        error={stationResetError}
+        onReset={() => void resetStationForNextCandidate()}
+      />
     );
   }
 

@@ -325,6 +325,38 @@ export type Database = {
           },
         ]
       }
+      station_deployment_resets: {
+        Row: {
+          completed_deployment_id: string
+          created_at: string
+          next_deployment_id: string
+          next_session_id: string
+          next_station_token: string
+        }
+        Insert: {
+          completed_deployment_id: string
+          created_at?: string
+          next_deployment_id: string
+          next_session_id: string
+          next_station_token: string
+        }
+        Update: {
+          completed_deployment_id?: string
+          created_at?: string
+          next_deployment_id?: string
+          next_session_id?: string
+          next_station_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "station_deployment_resets_next_session_id_fkey"
+            columns: ["next_session_id"]
+            isOneToOne: false
+            referencedRelation: "exam_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -445,6 +477,17 @@ export type Database = {
           case_id: string
           id: string
           session_start_time: string
+          status: string
+        }[]
+      }
+      reset_completed_station_sequence: {
+        Args: { _new_tokens: string[]; _station_token: string }
+        Returns: {
+          case_id: string
+          deployment_id: string
+          id: string
+          session_start_time: string
+          station_token: string
           status: string
         }[]
       }
