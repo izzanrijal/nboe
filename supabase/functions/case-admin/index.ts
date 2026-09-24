@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
+import { getRubricQualityError } from "./rubric-validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,7 +56,7 @@ const SCHEMA_DOC = {
     initial_prompt: "string >=400 chars",
     questions_text: "string >=300 chars",
     answer_key_text: "string >=800 chars",
-    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — bila dikirim harus >=15 items, >=8 critical, total >=40 poin; kosongkan items utk nonaktif",
+    checklist_rubric: "{ items: [{ text 10-500 chars, points 1-5, isCritical }] } — rubrik aktif harus 3-100 items, >=1 critical, total >=6 poin; gunakan hanya fakta substantif yang spesifik pada jawaban, tanpa boilerplate generik; kosongkan items utk nonaktif",
     media_notes: "array",
     created_by_email: "string email",
   },
@@ -159,20 +160,9 @@ Deno.serve(async (req) => {
       // Kosongkan items untuk menonaktifkan rubric (rubric_mode='none')
       const mode = items.length > 0 ? "checklist" : "none";
 
-      if (items.length > 0 && items.length < 15) {
-        return json(400, {
-          error: `Rubrik parsial tidak didukung: ${items.length} butir. Kirim ≥15 butir (checklist) atau kosongkan untuk rubric_mode=none.`,
-        });
-      }
-      if (items.length >= 15) {
-        const criticalCount = items.filter((i) => i.isCritical).length;
-        const totalPoints = items.reduce((s, i) => s + i.points, 0);
-        if (criticalCount < 8) {
-          return json(400, { error: `At least 8 rubric items must be isCritical:true (got ${criticalCount})` });
-        }
-        if (totalPoints < 40) {
-          return json(400, { error: `Rubric total points must be >= 40 (got ${totalPoints})` });
-        }
+      const rubricQualityError = getRubricQualityError(items);
+      if (rubricQualityError) {
+        return json(400, { error: rubricQualityError });
       }
 
       patch.checklist_rubric = { enabled: items.length > 0, items };

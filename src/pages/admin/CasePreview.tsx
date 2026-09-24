@@ -166,22 +166,22 @@ const CasePreview = () => {
         value: `${answerKeyText.trim().length}`,
       },
       {
-        label: `Rubrik: ≥ 15 butir`,
-        pass: rubricData.items.length >= 15,
-        value: `${rubricData.items.length}`,
+        label: `Rubrik aktif: 3–100 butir`,
+        pass: rubricMode === "none" || (rubricData.items.length >= 3 && rubricData.items.length <= 100),
+        value: rubricMode === "none" ? "nonaktif" : `${rubricData.items.length}`,
       },
       {
-        label: `Rubrik: ≥ 8 butir kritis`,
-        pass: criticalCount >= 8,
-        value: `${criticalCount}`,
+        label: `Rubrik aktif: ≥ 1 butir kritis`,
+        pass: rubricMode === "none" || criticalCount >= 1,
+        value: rubricMode === "none" ? "nonaktif" : `${criticalCount}`,
       },
       {
-        label: `Rubrik: total poin ≥ 40`,
-        pass: totalPoints >= 40,
-        value: `${totalPoints}`,
+        label: `Rubrik aktif: total poin ≥ 6`,
+        pass: rubricMode === "none" || totalPoints >= 6,
+        value: rubricMode === "none" ? "nonaktif" : `${totalPoints}`,
       },
     ];
-  }, [initialPrompt, questionsText, answerKeyText, rubricData]);
+  }, [initialPrompt, questionsText, answerKeyText, rubricData, rubricMode]);
 
   const allGatesPass = gates.every((g) => g.pass);
 
