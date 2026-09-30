@@ -151,14 +151,26 @@ const CasePreview = () => {
     const totalPoints = rubricData.items.reduce((s, i) => s + i.points, 0);
     return [
       {
-        label: `Vignette (initial_prompt) ≥ 400 karakter`,
-        pass: initialPrompt.trim().length >= 400,
+        // Panel murni tanya-jawab tidak punya vignette — kosong itu sah.
+        label: examMode === "panel_exam"
+          ? `Vignette (initial_prompt) opsional untuk panel — ≥ 20 karakter bila diisi`
+          : `Vignette (initial_prompt) ≥ 400 karakter`,
+        pass: examMode === "panel_exam"
+          ? initialPrompt.trim().length === 0 || initialPrompt.trim().length >= 20
+          : initialPrompt.trim().length >= 400,
         value: `${initialPrompt.trim().length}`,
       },
       {
-        label: `Tugas (questions_text) ≥ 300 karakter & ≥ 5 nomor`,
-        pass: questionsText.trim().length >= 300 && numberedTasks >= 5,
-        value: `${questionsText.trim().length} chr / ${numberedTasks} tugas`,
+        // Panel memakai satu pertanyaan inti; nomor ≥5 hanya wajib untuk mode kasus.
+        label: examMode === "panel_exam"
+          ? `Soal (questions_text) ≥ 20 karakter`
+          : `Tugas (questions_text) ≥ 300 karakter & ≥ 5 nomor`,
+        pass: examMode === "panel_exam"
+          ? questionsText.trim().length >= 20
+          : questionsText.trim().length >= 300 && numberedTasks >= 5,
+        value: examMode === "panel_exam"
+          ? `${questionsText.trim().length} chr`
+          : `${questionsText.trim().length} chr / ${numberedTasks} tugas`,
       },
       {
         label: `Kunci jawaban (answer_key_text) ≥ 800 karakter`,

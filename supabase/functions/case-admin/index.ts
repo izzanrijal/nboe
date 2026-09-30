@@ -29,8 +29,10 @@ const UpdateSchema = z.object({
   reading_time_seconds: z.number().int().min(5).max(900).optional(),
   time_limit_seconds: z.number().int().min(30).max(1800).optional(),
   show_results_to_candidate: z.boolean().optional(),
-  initial_prompt: z.string().min(400).optional(),
-  questions_text: z.string().min(300).optional(),
+  // Panel murni tanya-jawab tidak punya vignette -> string kosong harus diterima.
+  initial_prompt: z.string().max(20000).optional(),
+  // Panel memakai satu pertanyaan inti -> boleh jauh lebih pendek dari mode kasus.
+  questions_text: z.string().min(20).optional(),
   answer_key_text: z.string().min(800).optional(),
   checklist_rubric: z
     .object({ items: z.array(RubricItem).min(0).max(100) })
@@ -53,8 +55,8 @@ const SCHEMA_DOC = {
     reading_time_seconds: "int 5-900 (atau reading_time_minutes 0.25-15)",
     time_limit_seconds: "int 30-1800 (atau time_limit_minutes 0.5-30)",
     show_results_to_candidate: "boolean",
-    initial_prompt: "string >=400 chars",
-    questions_text: "string >=300 chars",
+    initial_prompt: "string (boleh kosong utk panel_exam murni tanya-jawab; >=400 disarankan utk mode kasus)",
+    questions_text: "string >=20 chars (panel_exam cukup 1 pertanyaan inti; mode kasus sebaiknya >=300 & >=5 nomor)",
     answer_key_text: "string >=800 chars",
     checklist_rubric: "{ items: [{ text 10-500 chars, points 1-5, isCritical }] } — rubrik aktif harus 3-100 items, >=1 critical, total >=6 poin; gunakan hanya fakta substantif yang spesifik pada jawaban, tanpa boilerplate generik; kosongkan items utk nonaktif",
     media_notes: "array",
