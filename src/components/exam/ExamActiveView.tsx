@@ -160,6 +160,10 @@ const ExamActiveView = ({
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
+    // iOS: speech recognition takes exclusive mic control and silences MediaRecorder.
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
+    if (isIOS) return;
     let stopped = false;
     let recognition: any;
     try {
