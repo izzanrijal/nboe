@@ -25,7 +25,13 @@ const useMediaRecorder = (): UseMediaRecorderReturn => {
     setError(null);
 
     try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      const ua = navigator.userAgent;
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
+      const isSafari = isIOS || (/Safari/.test(ua) && !/Chrome|Chromium|CriOS|Android/.test(ua));
+
+      const mimeType = isSafari
+        ? MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : ""
+        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
         ? "audio/webm"
@@ -49,7 +55,9 @@ const useMediaRecorder = (): UseMediaRecorderReturn => {
         setError("Perekaman audio bermasalah.");
       };
 
-      recorder.start(3000); // 3s chunks
+      // Safari's timeslice mode produces empty/broken MP4 chunks — record as one piece.
+      if (isSafari) recorder.start();
+      else recorder.start(3000); // 3s chunks
       recorderRef.current = recorder;
       setIsRecording(true);
     } catch (err) {

@@ -88,7 +88,9 @@ Deno.serve(async (req) => {
         });
       }
       const formData = new FormData();
-      formData.append("file", audioData, "audio.webm");
+      const lowerName = String(result.audio_file_url).toLowerCase();
+      const isMp4 = lowerName.endsWith(".mp4") || lowerName.endsWith(".m4a") || (audioData.type || "").includes("mp4");
+      formData.append("file", audioData, isMp4 ? "audio.mp4" : "audio.webm");
       formData.append("model", "whisper-1");
       const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
