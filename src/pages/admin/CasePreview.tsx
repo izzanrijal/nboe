@@ -151,14 +151,26 @@ const CasePreview = () => {
     const totalPoints = rubricData.items.reduce((s, i) => s + i.points, 0);
     return [
       {
-        label: `Vignette (initial_prompt) ≥ 400 karakter`,
-        pass: initialPrompt.trim().length >= 400,
+        // Panel murni tanya-jawab tidak punya vignette — kosong itu sah.
+        label: examMode === "panel_exam"
+          ? `Vignette (initial_prompt) opsional untuk panel — ≥ 20 karakter bila diisi`
+          : `Vignette (initial_prompt) ≥ 400 karakter`,
+        pass: examMode === "panel_exam"
+          ? initialPrompt.trim().length === 0 || initialPrompt.trim().length >= 20
+          : initialPrompt.trim().length >= 400,
         value: `${initialPrompt.trim().length}`,
       },
       {
-        label: `Tugas (questions_text) ≥ 300 karakter & ≥ 5 nomor`,
-        pass: questionsText.trim().length >= 300 && numberedTasks >= 5,
-        value: `${questionsText.trim().length} chr / ${numberedTasks} tugas`,
+        // Panel memakai satu pertanyaan inti; nomor ≥5 hanya wajib untuk mode kasus.
+        label: examMode === "panel_exam"
+          ? `Soal (questions_text) ≥ 20 karakter`
+          : `Tugas (questions_text) ≥ 300 karakter & ≥ 5 nomor`,
+        pass: examMode === "panel_exam"
+          ? questionsText.trim().length >= 20
+          : questionsText.trim().length >= 300 && numberedTasks >= 5,
+        value: examMode === "panel_exam"
+          ? `${questionsText.trim().length} chr`
+          : `${questionsText.trim().length} chr / ${numberedTasks} tugas`,
       },
       {
         label: `Kunci jawaban (answer_key_text) ≥ 800 karakter`,
@@ -166,22 +178,22 @@ const CasePreview = () => {
         value: `${answerKeyText.trim().length}`,
       },
       {
-        label: `Rubrik: ≥ 15 butir`,
-        pass: rubricData.items.length >= 15,
-        value: `${rubricData.items.length}`,
+        label: `Rubrik aktif: 3–100 butir`,
+        pass: rubricMode === "none" || (rubricData.items.length >= 3 && rubricData.items.length <= 100),
+        value: rubricMode === "none" ? "nonaktif" : `${rubricData.items.length}`,
       },
       {
-        label: `Rubrik: ≥ 8 butir kritis`,
-        pass: criticalCount >= 8,
-        value: `${criticalCount}`,
+        label: `Rubrik aktif: ≥ 1 butir kritis`,
+        pass: rubricMode === "none" || criticalCount >= 1,
+        value: rubricMode === "none" ? "nonaktif" : `${criticalCount}`,
       },
       {
-        label: `Rubrik: total poin ≥ 40`,
-        pass: totalPoints >= 40,
-        value: `${totalPoints}`,
+        label: `Rubrik aktif: total poin ≥ 6`,
+        pass: rubricMode === "none" || totalPoints >= 6,
+        value: rubricMode === "none" ? "nonaktif" : `${totalPoints}`,
       },
     ];
-  }, [initialPrompt, questionsText, answerKeyText, rubricData]);
+  }, [initialPrompt, questionsText, answerKeyText, rubricData, rubricMode]);
 
   const allGatesPass = gates.every((g) => g.pass);
 
