@@ -10,24 +10,31 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Users, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/contexts/AuthContext";
 
 const ParticipantList = () => {
   const queryClient = useQueryClient();
+  const { isMasterAdmin, user } = useAuth();
   const [open, setOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [form, setForm] = useState({ fullName: "", email: "", nim: "", password: "" });
 
   const { data: participants = [], isLoading } = useQuery({
-    queryKey: ["participants"],
+    queryKey: ["participants", isMasterAdmin],
     queryFn: async () => {
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "candidate");
+      // Master admin also sees other admins (they need exam access too)
+      let rolesQuery = supabase.from("user_roles").select("user_id, role");
+      if (!isMasterAdmin) rolesQuery = rolesQuery.eq("role", "candidate");
+      const { data: roles, error: rolesError } = await rolesQuery;
       if (rolesError) throw rolesError;
       if (!roles?.length) return [];
 
-      const candidateIds = roles.map((r) => r.user_id);
+      const roleMap: Record<string, string[]> = {};
+      roles.forEach((r) => {
+        (roleMap[r.user_id] ||= []).push(r.role);
+      });
+      const candidateIds = Object.keys(roleMap);
 
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
@@ -40,6 +47,14 @@ const ParticipantList = () => {
         .select("candidate_id");
       if (resultsError) throw resultsError;
 
+      let accessMap: Record<string, boolean> = {};
+      if (isMasterAdmin) {
+        const { data: access } = await (supabase as any)
+          .from("exam_access")
+          .select("user_id, allowed");
+        (access || []).forEach((a: any) => (accessMap[a.user_id] = a.allowed));
+      }
+
       const examCounts: Record<string, number> = {};
       results?.forEach((r) => {
         examCounts[r.candidate_id] = (examCounts[r.candidate_id] || 0) + 1;
@@ -48,9 +63,20 @@ const ParticipantList = () => {
       return (profiles || []).map((p) => ({
         ...p,
         examCount: examCounts[p.id] || 0,
+        isAdminRole: roleMap[p.id]?.includes("admin") ?? false,
+        allowed: accessMap[p.id] ?? false,
       }));
     },
   });
+
+  const toggleAllowed = async (userId: string, allowed: boolean) => {
+    const { error } = await (supabase as any)
+      .from("exam_access")
+      .upsert({ user_id: userId, allowed, updated_at: new Date().toISOString(), updated_by: user?.id });
+    if (error) return toast.error("Gagal menyimpan izin ujian");
+    toast.success(allowed ? "Diizinkan ujian" : "Izin ujian dicabut");
+    queryClient.invalidateQueries({ queryKey: ["participants"] });
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,17 +158,32 @@ const ParticipantList = () => {
                 <TableHead>Email</TableHead>
                 <TableHead>NIM</TableHead>
                 <TableHead className="text-right">Exams Taken</TableHead>
+                {isMasterAdmin && <TableHead className="text-right">Izin Ujian</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {participants.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.full_name}</TableCell>
+                  <TableCell className="font-medium">
+                    {p.full_name}
+                    {isMasterAdmin && p.isAdminRole && (
+                      <Badge variant="outline" className="ml-2">Admin</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{p.email}</TableCell>
                   <TableCell>{(p as any).nim || "—"}</TableCell>
                   <TableCell className="text-right">
                     <Badge variant="secondary">{p.examCount}</Badge>
                   </TableCell>
+                  {isMasterAdmin && (
+                    <TableCell className="text-right">
+                      <Switch
+                        checked={p.allowed}
+                        onCheckedChange={(v) => toggleAllowed(p.id, v)}
+                        aria-label="Izinkan ujian"
+                      />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
