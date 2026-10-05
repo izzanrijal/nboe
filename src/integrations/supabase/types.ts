@@ -187,6 +187,27 @@ export type Database = {
           },
         ]
       }
+      exam_access: {
+        Row: {
+          allowed: boolean
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       exam_results: {
         Row: {
           ai_score_report: Json | null
