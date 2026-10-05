@@ -75,7 +75,9 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
   });
   const [pcCount, setPcCount] = useState(1);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
-  const [showResultsToCandidateOverride, setShowResultsToCandidateOverride] = useState(false);
+  // Defaults to true so a deployment shows scores to participants unless the
+  // admin explicitly unchecks it (which hides the results from participants).
+  const [showResultsToCandidateOverride, setShowResultsToCandidateOverride] = useState(true);
   const [deployedStations, setDeployedStations] = useState<DeployedStationToken[]>([]);
   const [showResults, setShowResults] = useState(false);
   const queryClient = useQueryClient();
@@ -285,7 +287,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
       setShowResults(true);
       setSelectedCases([]);
       setPcCount(1);
-      setShowResultsToCandidateOverride(false);
+      setShowResultsToCandidateOverride(true);
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });

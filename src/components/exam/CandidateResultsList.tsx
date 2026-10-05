@@ -10,6 +10,7 @@ import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
 import { canCandidateViewResultDetails } from "@/lib/resultVisibility";
 import ModelAnswerPanel from "@/components/exam/ModelAnswerPanel";
+import { buildHighlightSegments, findRubricMatches } from "@/lib/rubricHighlight";
 
 interface ScoreItem {
   item: string;
@@ -131,6 +132,9 @@ const CandidateResultsList = () => {
           const isExpanded = expandedId === r.id;
           const parsed = parseScoreReport(r.ai_score_report);
           const scoreDisplay = getScoreDisplay(r.ai_score_report);
+          const transcript = r.transcript ?? "";
+          const rubricMatches = findRubricMatches(transcript, parsed.items);
+          const highlightSegments = buildHighlightSegments(transcript, rubricMatches);
 
           return (
             <div key={r.id} className="rounded-lg border border-border overflow-hidden">
@@ -165,25 +169,48 @@ const CandidateResultsList = () => {
                     </div>
                   )}
 
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <h4 className="text-sm font-semibold mb-2">Jawaban Peserta</h4>
+                    {transcript ? (
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                        {highlightSegments.map((segment, idx) => segment.highlighted ? (
+                          <mark
+                            key={idx}
+                            className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-500/30"
+                            title={`Cocok dengan butir rubrik ${segment.matchedItems.map((itemIndex) => itemIndex + 1).join(", ")}`}
+                          >
+                            {segment.text}
+                          </mark>
+                        ) : <span key={idx}>{segment.text}</span>)}
+                      </p>
+                    ) : (
+                      <p className="text-sm italic text-muted-foreground">Transkrip jawaban tidak tersedia.</p>
+                    )}
+                  </div>
+
                   {parsed.items.length > 0 && (
                     <div>
                       <h4 className="text-sm font-semibold mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
-                        {parsed.items.map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-sm">
-                            <Badge variant={item.passed ? "default" : "destructive"} className="text-xs">
-                              {item.passed ? "PASS" : "FAIL"}
-                            </Badge>
-                            {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
-                            <span className="flex-1">{item.item}</span>
-                            {item.points != null && (
-                              <span className="text-xs font-mono text-muted-foreground">
-                                {item.passed ? item.points : 0}/{item.points} pts
-                              </span>
-                            )}
-                            {item.comment && <span className="text-muted-foreground text-xs">— {item.comment}</span>}
-                          </div>
-                        ))}
+                        {parsed.items.map((item, idx) => {
+                          const unanswered = !item.passed || !rubricMatches[idx]?.matched;
+                          return (
+                            <div key={idx} className={`flex items-center gap-2 text-sm ${unanswered ? "italic text-muted-foreground" : ""}`}>
+                              <Badge variant={item.passed ? "default" : "destructive"} className="text-xs">
+                                {item.passed ? "PASS" : "FAIL"}
+                              </Badge>
+                              {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
+                              <span className="flex-1">{item.item}</span>
+                              {unanswered && <Badge variant="outline" className="text-[10px] font-normal">belum dijawab</Badge>}
+                              {item.points != null && (
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {item.passed ? item.points : 0}/{item.points} pts
+                                </span>
+                              )}
+                              {item.comment && <span className="text-muted-foreground text-xs">— {item.comment}</span>}
+                            </div>
+                          );
+                        })}
                         {parsed.totalPossible != null && (
                           <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-2 mt-2">
                             <span>Total</span>

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, Loader2 } from "lucide-react";
+import MarkdownLite from "@/components/MarkdownLite";
 
 interface ModelAnswer {
   text: string;
@@ -38,7 +39,7 @@ const ModelAnswerPanel = ({ resultId, cached }: { resultId: string; cached?: Mod
               Disimulasikan untuk {Math.round(answer.timeLimitSeconds / 60)} menit · ±{answer.wordCount} kata · {answer.wpm} kata/menit
             </p>
           )}
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{answer.text}</p>
+          <MarkdownLite>{answer.text}</MarkdownLite>
         </>
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground flex items-center gap-2">
