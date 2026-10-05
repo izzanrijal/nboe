@@ -1,3 +1,5 @@
+// Lightweight renderer for AI-generated answer text.
+// Emits React elements only (never a raw HTML string), so model output cannot inject markup.
 import { Fragment, type ReactNode } from "react";
 
 interface MarkdownLiteProps {
