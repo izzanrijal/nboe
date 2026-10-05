@@ -108,6 +108,11 @@ const ExamMobile = () => {
             setValidating(false);
             return;
           }
+          if (result.reason === 'not_allowed') {
+            toast.error("Akun Anda belum diizinkan untuk ujian. Silakan top up kredit AI melalui admin.");
+            setValidating(false);
+            return;
+          }
           toast.error("Gagal memulai sesi.");
           setValidating(false);
           return;

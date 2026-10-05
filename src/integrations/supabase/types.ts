@@ -187,6 +187,27 @@ export type Database = {
           },
         ]
       }
+      exam_access: {
+        Row: {
+          allowed: boolean
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       exam_results: {
         Row: {
           ai_score_report: Json | null
@@ -325,6 +346,33 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          dob: string | null
+          email: string
+          full_name: string
+          id: string
+          nim: string | null
+        }
+        Insert: {
+          created_at?: string
+          dob?: string | null
+          email: string
+          full_name: string
+          id: string
+          nim?: string | null
+        }
+        Update: {
+          created_at?: string
+          dob?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          nim?: string | null
+        }
+        Relationships: []
+      }
       station_deployment_resets: {
         Row: {
           completed_deployment_id: string
@@ -356,33 +404,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          dob: string | null
-          email: string
-          full_name: string
-          id: string
-          nim: string | null
-        }
-        Insert: {
-          created_at?: string
-          dob?: string | null
-          email: string
-          full_name: string
-          id: string
-          nim?: string | null
-        }
-        Update: {
-          created_at?: string
-          dob?: string | null
-          email?: string
-          full_name?: string
-          id?: string
-          nim?: string | null
-        }
-        Relationships: []
       }
       user_roles: {
         Row: {
