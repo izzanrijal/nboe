@@ -101,9 +101,18 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
         .select("user_id")
         .eq("role", "candidate");
       if (rolesError) throw rolesError;
-      if (!roles?.length) return [];
 
-      const candidateIds = [...new Set(roles.map((role) => role.user_id))];
+      // Master admin can also take exams, so include them in the filter
+      const { data: master } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("email", "izzan.rijal@gmail.com")
+        .maybeSingle();
+
+      const candidateIds = [
+        ...new Set([...(roles ?? []).map((role) => role.user_id), ...(master ? [master.id] : [])]),
+      ];
+      if (!candidateIds.length) return [];
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id, full_name, email, nim")
