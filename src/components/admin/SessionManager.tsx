@@ -94,7 +94,7 @@ const SessionManager = ({ examMode }: SessionManagerProps) => {
     isLoading: candidatesLoading,
     error: candidatesError,
   } = useQuery({
-    queryKey: ["deployment_candidate_profiles"],
+    queryKey: ["deployment_candidate_profiles", "with_master"],
     queryFn: async () => {
       const { data: roles, error: rolesError } = await supabase
         .from("user_roles")

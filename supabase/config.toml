@@ -18,3 +18,6 @@ verify_jwt = false
 
 [functions.case-admin]
 verify_jwt = false
+
+[functions.generate-model-answer]
+verify_jwt = false

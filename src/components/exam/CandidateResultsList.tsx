@@ -9,6 +9,7 @@ import { ChevronDown, ChevronUp, AlertTriangle, History } from "lucide-react";
 import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
 import { canCandidateViewResultDetails } from "@/lib/resultVisibility";
+import ModelAnswerPanel from "@/components/exam/ModelAnswerPanel";
 
 interface ScoreItem {
   item: string;
@@ -156,6 +157,7 @@ const CandidateResultsList = () => {
 
               {showResults && isExpanded && (
                 <div className="border-t border-border p-4 bg-muted/30 space-y-4">
+                  <ModelAnswerPanel resultId={r.id} cached={(r.ai_score_report as any)?.modelAnswer} />
                   {parsed.hasCriticalFail && (
                     <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
                       <AlertTriangle className="h-4 w-4" />
