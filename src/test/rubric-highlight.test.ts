@@ -35,4 +35,20 @@ describe("rubricHighlight", () => {
     expect(segments.some((segment) => segment.highlighted && segment.matchedItems.length === 2)).toBe(true);
     expect(matches.every((match) => match.matched)).toBe(true);
   });
+  it("uses exact AI evidence for clinically equivalent wording", () => {
+    const [match] = findRubricMatches("Saya memberikan oksigen melalui kanul nasal.", [
+      { item: "Terapi suplementasi O2", passed: true, evidenceQuote: "memberikan oksigen melalui kanul nasal" },
+    ]);
+    expect(match.matchedText).toBe("memberikan oksigen melalui kanul nasal");
+  });
+  it("does not infer PASS evidence from a single overlapping keyword", () => {
+    const [match] = findRubricMatches("Nyeri perut.", [{ item: "Nyeri dada", passed: true }]);
+    expect(match.matched).toBe(false);
+  });
+  it("does not highlight fabricated or explicitly empty evidence", () => {
+    expect(findRubricMatches("Nyeri dada.", [
+      { item: "Nyeri dada", passed: true, evidenceQuote: "Tidak ada nyeri" },
+      { item: "Nyeri dada", passed: true, evidenceQuote: "" },
+    ]).every((item) => !item.matched)).toBe(true);
+  });
 });

@@ -1,0 +1,3 @@
+- [ ] Perbaiki akses AI peserta berizin dan tampilkan penyebab kegagalan evaluasi.
+- [ ] Highlight kutipan jawaban yang memenuhi rubrik; bold-italic hanya butir yang belum disebut.
+- [ ] Uji evaluasi, jawaban ideal, dan perubahan tampilan.

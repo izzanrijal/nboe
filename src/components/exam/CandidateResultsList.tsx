@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,8 @@ import type { Json } from "@/integrations/supabase/types";
 import { canCandidateViewResultDetails } from "@/lib/resultVisibility";
 import ModelAnswerPanel from "@/components/exam/ModelAnswerPanel";
 import { buildHighlightSegments, findRubricMatches } from "@/lib/rubricHighlight";
+import { invokeExamAi } from "@/lib/examAi";
+import { useToast } from "@/hooks/use-toast";
 
 interface ScoreItem {
   item: string;
@@ -18,6 +20,7 @@ interface ScoreItem {
   comment?: string;
   points?: number;
   isCritical?: boolean;
+  evidenceQuote?: string;
 }
 
 interface ScoreReport {
@@ -61,7 +64,7 @@ const getScoreDisplay = (report: Json | null): { label: string; variant: "defaul
   if (parsed.hasCriticalFail) return { label: "TIDAK LULUS", variant: "destructive" };
 
   if (parsed.totalPossible && parsed.totalPossible > 0) {
-    const pct = Math.round((parsed.totalScore! / parsed.totalPossible) * 100);
+    const pct = Math.round(((parsed.totalScore ?? 0) / parsed.totalPossible) * 100);
     return { label: `${pct}% (${parsed.totalScore}/${parsed.totalPossible})`, variant: "default" };
   }
 
@@ -72,15 +75,26 @@ const getScoreDisplay = (report: Json | null): { label: string; variant: "defaul
 const CandidateResultsList = () => {
   const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const evaluate = useMutation({
+    mutationFn: (resultId: string) => invokeExamAi("evaluate-exam", resultId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["candidate_results"] });
+      toast({ title: "Evaluasi AI selesai" });
+    },
+    onError: (error: Error) => toast({ title: "Evaluasi AI gagal", description: error.message, variant: "destructive" }),
+  });
 
   const { data: results = [], isLoading } = useQuery({
     queryKey: ["candidate_results", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
+      if (!user) return [];
       const { data, error } = await supabase
         .from("exam_results")
-        .select("id, created_at, ai_score_report, transcript, exam_sessions:session_id(status, show_results_to_candidate_override, clinical_cases:case_id(title, show_results_to_candidate))")
-        .eq("candidate_id", user!.id)
+        .select("id, created_at, ai_score_report, transcript, audio_file_url, exam_sessions:session_id(status, show_results_to_candidate_override, clinical_cases:case_id(title, show_results_to_candidate))")
+        .eq("candidate_id", user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -138,8 +152,8 @@ const CandidateResultsList = () => {
 
           return (
             <div key={r.id} className="rounded-lg border border-border overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors"
+              <Button variant="ghost"
+                className="w-full h-auto whitespace-normal flex items-center justify-between gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
                 onClick={() => showResults && setExpandedId(isExpanded ? null : r.id)}
                 disabled={!showResults}
               >
@@ -157,11 +171,14 @@ const CandidateResultsList = () => {
                     <Badge variant="secondary">Selesai</Badge>
                   )}
                 </div>
-              </button>
+              </Button>
 
               {showResults && isExpanded && (
                 <div className="border-t border-border p-4 bg-muted/30 space-y-4">
                   <ModelAnswerPanel resultId={r.id} cached={(r.ai_score_report as any)?.modelAnswer} />
+                  <Button variant="outline" size="sm" disabled={evaluate.isPending || (!r.transcript && !r.audio_file_url)} onClick={() => evaluate.mutate(r.id)}>
+                    {evaluate.isPending ? "Menilai jawaban…" : "Evaluasi AI"}
+                  </Button>
                   {parsed.hasCriticalFail && (
                     <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
                       <AlertTriangle className="h-4 w-4" />
@@ -170,13 +187,13 @@ const CandidateResultsList = () => {
                   )}
 
                   <div className="rounded-md border border-border bg-background p-3">
-                    <h4 className="text-sm font-semibold mb-2">Jawaban Peserta</h4>
+                    <h4 className="text-sm font-normal mb-2">Jawaban Peserta</h4>
                     {transcript ? (
                       <p className="text-sm whitespace-pre-wrap leading-relaxed">
                         {highlightSegments.map((segment, idx) => segment.highlighted ? (
                           <mark
                             key={idx}
-                            className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-500/30"
+                            className="rubric-highlight rounded-sm px-0.5"
                             title={`Cocok dengan butir rubrik ${segment.matchedItems.map((itemIndex) => itemIndex + 1).join(", ")}`}
                           >
                             {segment.text}
@@ -190,18 +207,18 @@ const CandidateResultsList = () => {
 
                   {parsed.items.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-semibold mb-2">Rubrik Penilaian</h4>
+                      <h4 className="text-sm font-normal mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
                         {parsed.items.map((item, idx) => {
-                          const unanswered = !item.passed || !rubricMatches[idx]?.matched;
+                          const unanswered = !item.passed;
                           return (
                             <div key={idx} className={`flex items-center gap-2 text-sm ${unanswered ? "italic text-muted-foreground" : ""}`}>
                               <Badge variant={item.passed ? "default" : "destructive"} className="text-xs">
                                 {item.passed ? "PASS" : "FAIL"}
                               </Badge>
                               {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
-                              <span className="flex-1">{item.item}</span>
-                              {unanswered && <Badge variant="outline" className="text-[10px] font-normal">belum dijawab</Badge>}
+                              <span className={`flex-1 ${unanswered ? "font-bold italic" : "font-normal"}`}>{item.item}</span>
+                              {unanswered && <Badge variant="outline" className="text-[10px] font-normal">belum terpenuhi</Badge>}
                               {item.points != null && (
                                 <span className="text-xs font-mono text-muted-foreground">
                                   {item.passed ? item.points : 0}/{item.points} pts
@@ -214,7 +231,7 @@ const CandidateResultsList = () => {
                         {parsed.totalPossible != null && (
                           <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-2 mt-2">
                             <span>Total</span>
-                            <span>{parsed.totalScore}/{parsed.totalPossible} pts ({Math.round((parsed.totalScore! / parsed.totalPossible) * 100)}%)</span>
+                            <span>{parsed.totalScore}/{parsed.totalPossible} pts ({parsed.totalPossible > 0 ? Math.round(((parsed.totalScore ?? 0) / parsed.totalPossible) * 100) : 0}%)</span>
                           </div>
                         )}
                         {parsed.score != null && (

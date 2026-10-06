@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeExamAi } from "@/lib/examAi";
 import CountdownTimer from "@/components/station/CountdownTimer";
 import ChatInput from "@/components/exam/ChatInput";
 import useMediaRecorder from "@/hooks/useMediaRecorder";
@@ -326,11 +327,10 @@ const ExamActiveView = ({
 
       // Kick off transcription + AI grading (voice-to-text) without blocking the candidate
       if (data?.id && fileName) {
-        supabase.functions
-          .invoke("evaluate-exam", { body: { result_id: data.id } })
-          .then(({ error: evalError }) => {
-            if (evalError) console.warn("Auto evaluation failed:", evalError);
-          });
+        invokeExamAi("evaluate-exam", data.id).catch((error) => {
+          console.warn("Auto evaluation failed:", error);
+          toast.error(error instanceof Error ? error.message : "Evaluasi AI gagal. Rekaman tetap tersimpan.");
+        });
       }
       return data?.id ?? null;
     };

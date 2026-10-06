@@ -10,6 +10,7 @@ import { ClipboardCheck, Play, ChevronDown, ChevronUp, Loader2, AlertTriangle, T
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Json } from "@/integrations/supabase/types";
 import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
+import { invokeExamAi } from "@/lib/examAi";
 
 interface ScoreItem {
   item: string;
@@ -79,11 +80,7 @@ const ResultsViewer = ({ examMode }: ResultsViewerProps) => {
 
   const evaluateMutation = useMutation({
     mutationFn: async (resultId: string) => {
-      const { data, error } = await supabase.functions.invoke("evaluate-exam", {
-        body: { result_id: resultId },
-      });
-      if (error) throw error;
-      return data;
+      return invokeExamAi("evaluate-exam", resultId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["exam_results_admin"] });
