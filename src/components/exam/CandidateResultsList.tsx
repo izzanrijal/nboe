@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,6 @@ import DetailedFeedbackDisplay from "@/components/exam/DetailedFeedbackDisplay";
 import type { Json } from "@/integrations/supabase/types";
 import { canCandidateViewResultDetails } from "@/lib/resultVisibility";
 import ModelAnswerPanel from "@/components/exam/ModelAnswerPanel";
-import { buildHighlightSegments, findRubricMatches } from "@/lib/rubricHighlight";
-import { invokeExamAi } from "@/lib/examAi";
-import { useToast } from "@/hooks/use-toast";
 
 interface ScoreItem {
   item: string;
@@ -75,16 +72,6 @@ const getScoreDisplay = (report: Json | null): { label: string; variant: "defaul
 const CandidateResultsList = () => {
   const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const evaluate = useMutation({
-    mutationFn: (resultId: string) => invokeExamAi("evaluate-exam", resultId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["candidate_results"] });
-      toast({ title: "Evaluasi AI selesai" });
-    },
-    onError: (error: Error) => toast({ title: "Evaluasi AI gagal", description: error.message, variant: "destructive" }),
-  });
 
   const { data: results = [], isLoading } = useQuery({
     queryKey: ["candidate_results", user?.id],
@@ -147,8 +134,6 @@ const CandidateResultsList = () => {
           const parsed = parseScoreReport(r.ai_score_report);
           const scoreDisplay = getScoreDisplay(r.ai_score_report);
           const transcript = r.transcript ?? "";
-          const rubricMatches = findRubricMatches(transcript, parsed.items);
-          const highlightSegments = buildHighlightSegments(transcript, rubricMatches);
 
           return (
             <div key={r.id} className="rounded-lg border border-border overflow-hidden">
@@ -175,10 +160,11 @@ const CandidateResultsList = () => {
 
               {showResults && isExpanded && (
                 <div className="border-t border-border p-4 bg-muted/30 space-y-4">
-                  <ModelAnswerPanel resultId={r.id} cached={(r.ai_score_report as any)?.modelAnswer} />
-                  <Button variant="outline" size="sm" disabled={evaluate.isPending || (!r.transcript && !r.audio_file_url)} onClick={() => evaluate.mutate(r.id)}>
-                    {evaluate.isPending ? "Menilai jawaban…" : "Evaluasi AI"}
-                  </Button>
+                  <ModelAnswerPanel
+                    resultId={r.id}
+                    cached={(r.ai_score_report as any)?.modelAnswer}
+                    rubricItems={parsed.items}
+                  />
                   {parsed.hasCriticalFail && (
                     <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
                       <AlertTriangle className="h-4 w-4" />
@@ -187,19 +173,12 @@ const CandidateResultsList = () => {
                   )}
 
                   <div className="rounded-md border border-border bg-background p-3">
-                    <h4 className="text-sm font-normal mb-2">Jawaban Peserta</h4>
+                    <h4 className="text-sm font-normal mb-2">Jawaban Peserta (transkrip)</h4>
                     {transcript ? (
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                        {highlightSegments.map((segment, idx) => segment.highlighted ? (
-                          <mark
-                            key={idx}
-                            className="rubric-highlight rounded-sm px-0.5"
-                            title={`Cocok dengan butir rubrik ${segment.matchedItems.map((itemIndex) => itemIndex + 1).join(", ")}`}
-                          >
-                            {segment.text}
-                          </mark>
-                        ) : <span key={idx}>{segment.text}</span>)}
-                      </p>
+                      // Plain text on purpose: the transcript is a raw Whisper
+                      // output, so highlighting it would flag pronunciation and
+                      // spelling artefacts rather than clinical content.
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{transcript}</p>
                     ) : (
                       <p className="text-sm italic text-muted-foreground">Transkrip jawaban tidak tersedia.</p>
                     )}
@@ -210,21 +189,21 @@ const CandidateResultsList = () => {
                       <h4 className="text-sm font-normal mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
                         {parsed.items.map((item, idx) => {
-                          // The highlight is the source of truth: a rubric line is
-                          // only "passed" when the transcript actually mentions it.
-                          const match = rubricMatches[idx];
-                          const passed = match ? match.passed : item.passed;
+                          // Grading verdict comes from the evaluation report. The
+                          // transcript is raw speech-to-text, so we do not try to
+                          // re-derive passes by string-matching it.
+                          const passed = item.passed;
                           const mentioned = passed;
                           return (
-                            <div key={idx} className={`flex items-center gap-2 text-sm ${mentioned ? "" : "italic text-muted-foreground"}`}>
-                              <Badge variant={passed ? "default" : "destructive"} className="text-xs">
+                            <div key={idx} className={`flex items-start gap-2 text-sm ${mentioned ? "" : "italic text-muted-foreground"}`}>
+                              <Badge variant={passed ? "default" : "destructive"} className="text-xs shrink-0">
                                 {passed ? "PASS" : "FAIL"}
                               </Badge>
-                              {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
+                              {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
                               <span className={`flex-1 font-normal ${mentioned ? "" : "font-bold italic"}`}>{item.item}</span>
-                              {!mentioned && <Badge variant="outline" className="text-[10px] font-normal">belum disebut</Badge>}
+                              {!mentioned && <Badge variant="outline" className="text-[10px] font-normal shrink-0">belum disebut</Badge>}
                               {item.points != null && (
-                                <span className="text-xs font-mono text-muted-foreground">
+                                <span className="text-xs font-mono text-muted-foreground shrink-0">
                                   {passed ? item.points : 0}/{item.points} pts
                                 </span>
                               )}

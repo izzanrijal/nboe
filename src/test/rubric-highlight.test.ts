@@ -1,101 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { buildHighlightSegments, findRubricMatches, normalize } from "@/lib/rubricHighlight";
+import { findRubricMatches, buildHighlightSegments, findUnmentionedItems } from "@/lib/rubricHighlight";
 
-describe("rubricHighlight", () => {
-  it("normalizes capitalization, whitespace, and punctuation", () => {
-    expect(normalize("  Nyeri DADA,\n menjalar! ")).toBe("nyeri dada menjalar");
-  });
+const ANSWER = `Pertanyaan 1:
 
-  it("finds a passed rubric phrase despite capitalization and punctuation", () => {
-    const transcript = "Pasien mengalami NYERI DADA, sejak pagi.";
-    const [match] = findRubricMatches(transcript, [{ item: "Menyebutkan nyeri dada", passed: true }]);
+ARNI adalah Angiotensin Receptor-Neprilysin Inhibitor. ARNI tidak dikombinasi dengan ACE-inhibitor karena keduanya meningkatkan bradikinin.`;
 
-    expect(match).toMatchObject({ matched: true, matchedText: "NYERI DADA" });
-    expect(transcript.slice(match.start, match.end)).toBe("NYERI DADA");
-  });
-
-  it("does not match missing rubric items", () => {
-    const matches = findRubricMatches("Pasien sesak napas.", [
-      { item: "Nyeri dada", passed: true },
-      { item: "Sesak napas", passed: false },
+describe("highlight targets the AI model answer", () => {
+  it("highlights a rubric phrase the answer contains", () => {
+    const matches = findRubricMatches(ANSWER, [
+      { item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor." },
     ]);
-
-    expect(matches.map((match) => match.matched)).toEqual([false, true]);
+    const segments = buildHighlightSegments(ANSWER, matches);
+    expect(matches[0].matched).toBe(true);
+    expect(matches[0].matchedText.toLowerCase()).toContain("angiotensin");
+    expect(segments.some((s) => s.highlighted)).toBe(true);
   });
 
-  it("builds ordered segments and retains multiple overlapping matches", () => {
-    const transcript = "Nyeri dada menjalar ke lengan kiri.";
-    const matches = findRubricMatches(transcript, [
-      { item: "Nyeri dada", passed: true },
-      { item: "Dada menjalar ke lengan", passed: true },
+  it("reports rubric lines the answer does not mention", () => {
+    const matches = findRubricMatches(ANSWER, [
+      { item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor." },
+      { item: "Menyebutkan: washout period 36 jam sebelum beralih ke ARNI." },
     ]);
-    const segments = buildHighlightSegments(transcript, matches);
-
-    expect(segments.map((segment) => segment.text).join("")).toBe(transcript);
-    expect(segments.some((segment) => segment.highlighted && segment.matchedItems.length === 2)).toBe(true);
-    expect(matches.every((match) => match.matched)).toBe(true);
+    const missing = findUnmentionedItems(matches);
+    expect(missing).toHaveLength(1);
+    expect(missing[0].item.item).toContain("washout");
   });
 
-  it("uses exact AI evidence for clinically equivalent wording", () => {
-    const [match] = findRubricMatches("Saya memberikan oksigen melalui kanul nasal.", [
-      { item: "Terapi suplementasi O2", passed: true, evidenceQuote: "memberikan oksigen melalui kanul nasal" },
+  it("derives passed from presence in the answer, not a supplied verdict", () => {
+    const matches = findRubricMatches(ANSWER, [
+      // Claim passed=true but the phrase is absent -> must stay unmentioned.
+      { item: "Menyebutkan: dosis sacubitril valsartan 97/103 mg dua kali sehari.", passed: true },
     ]);
-    expect(match.matchedText).toBe("memberikan oksigen melalui kanul nasal");
+    expect(matches[0].passed).toBe(false);
+    expect(matches[0].matched).toBe(false);
+  });
+});
+
+describe("tolerance for Whisper speech-to-text artefacts", () => {
+  it("matches despite the common neprilysin/neprilisin spelling slip", () => {
+    const matches = findRubricMatches(
+      "ARNI yaitu sacubitril menghambat neprilisin yang juga mendegradasi bradikinin",
+      [{ item: "Menyebutkan: ARNI (Sacubitril) menghambat neprilysin." }],
+    );
+    expect(matches[0].matched).toBe(true);
   });
 
-  it("does not infer PASS evidence from a single overlapping keyword", () => {
-    const [match] = findRubricMatches("Nyeri perut.", [{ item: "Nyeri dada", passed: true }]);
-    expect(match.matched).toBe(false);
+  it("matches when punctuation and capitalisation are missing", () => {
+    const matches = findRubricMatches(
+      "arni angiotensin receptor neprilysin inhibitor",
+      [{ item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor." }],
+    );
+    expect(matches[0].matched).toBe(true);
   });
 
-  it("ignores a fabricated evidence quote and falls back to phrase matching", () => {
-    // A bogus quote must not create a highlight, but it must not block the
-    // real phrase either: the transcript does say "Nyeri dada".
-    const [match] = findRubricMatches("Nyeri dada.", [
-      { item: "Nyeri dada", passed: true, evidenceQuote: "Tidak ada nyeri" },
+  it("matches across filler words inserted by transcription", () => {
+    const matches = findRubricMatches(
+      "jadi gini ya dok washout period itu tiga puluh enam jam",
+      [{ item: "harus ada washout period 36 jam" }],
+    );
+    expect(matches[0].matched).toBe(true);
+  });
+
+  it("does not match a genuinely absent concept", () => {
+    const matches = findRubricMatches(
+      "pasien saya beri aspirin lalu saya rujuk",
+      [{ item: "Menyebutkan: washout period 36 jam sebelum beralih ke ARNI." }],
+    );
+    expect(matches[0].matched).toBe(false);
+  });
+
+  it("accepts a true evidence quote and ignores a fabricated one", () => {
+    const transcript = "pasien saya beri aspirin";
+    const real = findRubricMatches(transcript, [{ item: "x", evidenceQuote: "aspirin" }]);
+    expect(real[0].matched).toBe(true);
+
+    const fake = findRubricMatches(transcript, [
+      { item: "Menyebutkan: bradikinin meningkat", evidenceQuote: "kalimat yang tidak ada" },
     ]);
-    expect(match.matched).toBe(true);
-    expect(match.matchedText).toBe("Nyeri dada");
-  });
-
-  it("does not highlight when neither the quote nor the phrase is present", () => {
-    const [match] = findRubricMatches("Pasien batuk.", [
-      { item: "Nyeri dada", passed: true, evidenceQuote: "Tidak ada nyeri" },
-    ]);
-    expect(match.matched).toBe(false);
-    expect(match.passed).toBe(false);
-  });
-
-  it("treats an empty evidence quote as absent", () => {
-    const [match] = findRubricMatches("Pasien batuk.", [
-      { item: "Nyeri dada", passed: true, evidenceQuote: "" },
-    ]);
-    expect(match.matched).toBe(false);
-  });
-
-  // The highlight is authoritative: the AI verdict must not override what the
-  // transcript actually says, in either direction.
-  it("marks a rubric item passed only when the transcript mentions it (AI said fail)", () => {
-    const [match] = findRubricMatches("Pasien mengeluh nyeri dada.", [
-      { item: "Menyebutkan nyeri dada", passed: false },
-    ]);
-    expect(match.matched).toBe(true);
-    expect(match.passed).toBe(true);
-  });
-
-  it("marks a rubric item not passed when the transcript is silent (AI said pass)", () => {
-    const [match] = findRubricMatches("Pasien datang dengan batuk.", [
-      { item: "Menyebutkan nyeri dada", passed: true },
-    ]);
-    expect(match.matched).toBe(false);
-    expect(match.passed).toBe(false);
-  });
-
-  it("derives passed from the highlight for every item", () => {
-    const matches = findRubricMatches("Nyeri dada dan sesak napas.", [
-      { item: "Nyeri dada", passed: true },
-      { item: "Riwayat merokok", passed: true },
-    ]);
-    expect(matches.map((match) => match.passed)).toEqual([true, false]);
+    expect(fake[0].matched).toBe(false);
   });
 });

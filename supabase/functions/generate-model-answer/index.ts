@@ -33,11 +33,17 @@ Deno.serve(async (req) => {
 ATURAN:
 - Bahasa Indonesia, gaya lisan natural, terstruktur, langsung ke poin.
 - Panjang maksimal ±${wordBudget} kata (kecepatan bicara normal ${WPM} kata/menit). Jangan melebihi.
-${rubric.length ? `- WAJIB mencakup SETIAP butir rubrik di bawah sehingga semua butir LULUS.
+${rubric.length ? `- WAJIB mencakup SETIAP butir rubrik di bawah sehingga semua butir LULUS. Jawaban ini menjadi acuan peserta, jadi setiap butir harus benar-benar tersurat.
+- Setiap butir rubrik HARUS muncul sebagai kalimat yang jelas di dalam jawaban, memakai istilah klinis baku yang tertulis pada butir tersebut (sebut istilahnya, bukan hanya menyiratkan).
 - Butir KRITIS wajib disebut eksplisit dan jelas: ${critical.map((c) => `"${c.text}"`).join("; ") || "(tidak ada)"}.` : "- Cakup seluruh poin penting kunci jawaban."}
 - Urutkan sesuai pertanyaan. Gunakan judul singkat per bagian (mis. "Pertanyaan 1:").
 - Jangan menambahkan penjelasan meta, hanya teks jawaban yang diucapkan.
 - Tulis teks biasa tanpa Markdown bold/italic. Jangan menjanjikan kelulusan; cakup kriteria berdasarkan kunci jawaban.
+
+CONTOH POLA KALIMAT (setiap butir diucapkan sebagai pernyataan tersendiri):
+- "ARNI adalah singkatan dari Angiotensin Receptor-Neprilysin Inhibitor."
+- "ACE-inhibitor menghambat degradasi bradikinin karena ACE sama dengan kininase II."
+- "Jika pasien beralih dari ACE-inhibitor ke ARNI, harus ada washout period 36 jam."
 
 KASUS: ${cc?.title ?? ""}
 ${cc?.initial_prompt ? `SKENARIO:\n${cc.initial_prompt}\n` : ""}
