@@ -27,7 +27,10 @@ export interface RubricMatch {
 
 export interface HighlightSegment {
   text: string;
+  /** Rubric phrase the participant DID say — rendered with <mark>. */
   highlighted: boolean;
+  /** Rubric phrase the participant did NOT say — rendered bold+italic inline. */
+  emphasised: boolean;
   matchedItems: number[];
 }
 
@@ -161,14 +164,17 @@ const locateRubricItem = (
 };
 
 /**
- * Match rubric items against a body of text (the AI model answer, or a
- * transcript). Returns where each item was found so the caller can highlight
- * the phrases a participant still needs to learn.
+ * Rubric matches inside the ideal answer.
  *
- * IMPORTANT: locating a phrase only decides WHERE a highlight goes. Whether the
- * candidate covered the line comes exclusively from the grading report, because
- * the AI model answer is written to contain every rubric line — deriving the
- * verdict from it would report every gap as "already said".
+ * - A rubric line the participant DID say gets highlighted, so the panel reads
+ *   as confirmation of what they covered.
+ * - A rubric line they did NOT say is only emphasised (bold+italic) in the
+ *   answer text itself — never highlighted, and never listed in a separate
+ *   section below the answer.
+ *
+ * Whether the participant covered a line comes exclusively from the grading
+ * report (`coverage`), because the model answer by construction contains every
+ * rubric line and would otherwise report every gap as "already said".
  */
 export const findRubricMatches = (
   text: string,
@@ -196,40 +202,60 @@ export const findRubricMatches = (
 };
 
 /**
- * Segments of the AI answer to mark. Only lines the CANDIDATE missed are
- * highlighted, so a highlight always reads as "you did not say this yet".
- * Previously every located phrase was marked, which made the panel look as
- * though the participant had said things they never did.
+ * Segments of the ideal answer to render.
+ *
+ * - `highlighted` marks a rubric phrase the PARTICIPANT actually said.
+ * - `emphasised` marks a rubric phrase they did NOT say; the UI renders these
+ *   in bold+italic inline, so no separate list is needed below the answer.
+ *
+ * Both come from the grading report. A phrase absent from the ideal answer text
+ * cannot be rendered inline, so the caller may still list those separately.
  */
 export const buildHighlightSegments = (
   text: string,
   matches: RubricMatch[],
 ): HighlightSegment[] => {
-  const gaps = matches.filter((match) => match.matched && !match.coveredByCandidate);
+  const located = matches.filter((match) => match.matched);
+  const highlighted = located.filter((match) => match.coveredByCandidate);
+  const emphasised = located.filter((match) => !match.coveredByCandidate);
   const boundaries = new Set([0, text.length]);
-  gaps.forEach((match) => {
+  [...highlighted, ...emphasised].forEach((match) => {
     boundaries.add(match.start);
     boundaries.add(match.end);
   });
   const sorted = [...boundaries].sort((a, b) => a - b);
 
-  return sorted.slice(0, -1).map((start, index) => {
-    const end = sorted[index + 1];
-    const matchedItems = gaps
+  const itemsOverlapping = (list: RubricMatch[], start: number, end: number) =>
+    list
       .filter((match) => match.start < end && match.end > start)
       .map((match) => match.itemIndex);
+
+  return sorted.slice(0, -1).map((start, index) => {
+    const end = sorted[index + 1];
+    const highlightedItems = itemsOverlapping(highlighted, start, end);
+    const emphasisedItems = itemsOverlapping(emphasised, start, end);
     return {
       text: text.slice(start, end),
-      highlighted: matchedItems.length > 0,
-      matchedItems,
+      highlighted: highlightedItems.length > 0,
+      emphasised: emphasisedItems.length > 0,
+      matchedItems: [...highlightedItems, ...emphasisedItems],
     };
   }).filter((segment) => segment.text.length > 0);
 };
 
 /**
- * Rubric lines the candidate did NOT cover, per the grading report. The UI
- * renders these in bold+italic so the participant sees what to say next time.
+ * Rubric lines the candidate did NOT cover AND that could not be rendered inline
+ * inside the ideal answer text. These are the only items that need a separate
+ * listing; anything located in the answer is already bold+italic inline.
  */
 export const findUnmentionedItems = (
+  text: string,
   matches: RubricMatch[],
-): RubricMatch[] => matches.filter((match) => !match.coveredByCandidate);
+): RubricMatch[] => {
+  const answerTokens = tokenize(text) as StemToken[];
+  return matches.filter(
+    (match) =>
+      !match.coveredByCandidate &&
+      !locateRubricItem(text, answerTokens, match.item),
+  );
+};
