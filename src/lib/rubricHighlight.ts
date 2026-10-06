@@ -11,6 +11,13 @@ export interface RubricMatch {
   matchedText: string;
   start: number;
   end: number;
+  /**
+   * Highlight-driven verdict. `true` when the candidate's transcript actually
+   * contains the rubric phrase (or the AI-supplied evidence quote), `false`
+   * when nothing was said. This is the authoritative pass/fail used by the UI,
+   * so a rubric line is only shown as "passed" when the answer really mentions it.
+   */
+  passed: boolean;
 }
 
 export interface HighlightSegment {
@@ -55,6 +62,49 @@ const isUsefulPhrase = (tokens: Token[]): boolean => {
   return tokens.length === 1 && tokens[0].value.length >= 3 && !ignoredSingleTokens.has(tokens[0].value);
 };
 
+/**
+ * Locate a rubric line inside the transcript. Detection is independent of the
+ * AI verdict: we always try to find the phrase so the highlight is the source
+ * of truth. The AI's `evidenceQuote` (when present) is preferred because it is
+ * an exact substring, but it is only trusted if it truly occurs in the text.
+ */
+const locateRubricItem = (
+  transcript: string,
+  transcriptTokens: Token[],
+  item: RubricHighlightItem,
+): { start: number; end: number } | undefined => {
+  if (item.evidenceQuote) {
+    const quote = item.evidenceQuote.trim();
+    if (quote) {
+      const start = transcript.indexOf(quote);
+      if (start >= 0) return { start, end: start + quote.length };
+    }
+  }
+
+  const rubricTokens = tokenize(item.item);
+  if (!rubricTokens.length) return undefined;
+
+  for (let length = rubricTokens.length; length >= 1; length -= 1) {
+    for (let rubricStart = 0; rubricStart + length <= rubricTokens.length; rubricStart += 1) {
+      const phrase = rubricTokens.slice(rubricStart, rubricStart + length);
+      if (!isUsefulPhrase(phrase)) continue;
+      const usefulCount = phrase.filter((token) => !ignoredSingleTokens.has(token.value)).length;
+      const requiredCount = Math.min(2, rubricTokens.filter((token) => !ignoredSingleTokens.has(token.value)).length);
+      if (usefulCount < requiredCount) continue;
+      for (let transcriptStart = 0; transcriptStart + length <= transcriptTokens.length; transcriptStart += 1) {
+        const matches = phrase.every((token, offset) => token.value === transcriptTokens[transcriptStart + offset].value);
+        if (matches) {
+          return {
+            start: transcriptTokens[transcriptStart].start,
+            end: transcriptTokens[transcriptStart + length - 1].end,
+          };
+        }
+      }
+    }
+  }
+  return undefined;
+};
+
 export const findRubricMatches = (
   transcript: string,
   rubricItems: RubricHighlightItem[],
@@ -62,43 +112,14 @@ export const findRubricMatches = (
   const transcriptTokens = tokenize(transcript);
 
   return rubricItems.map((item, itemIndex) => {
-    const rubricTokens = tokenize(item.item);
-    let located: { start: number; end: number } | undefined;
-
-    if (item.passed) {
-      if (item.evidenceQuote) {
-        const start = transcript.indexOf(item.evidenceQuote);
-        if (start >= 0) located = { start, end: start + item.evidenceQuote.length };
-      }
-      // Legacy reports may have no saved evidence. Require a meaningful full
-      // phrase, never a single keyword that cannot establish clinical accuracy.
-      if (!located && item.evidenceQuote === undefined) {
-      outer: for (let length = rubricTokens.length; length >= 1; length -= 1) {
-        for (let rubricStart = 0; rubricStart + length <= rubricTokens.length; rubricStart += 1) {
-          const phrase = rubricTokens.slice(rubricStart, rubricStart + length);
-          if (!isUsefulPhrase(phrase)) continue;
-          const usefulCount = phrase.filter((token) => !ignoredSingleTokens.has(token.value)).length;
-          const requiredCount = Math.min(2, rubricTokens.filter((token) => !ignoredSingleTokens.has(token.value)).length);
-          if (usefulCount < requiredCount) continue;
-          for (let transcriptStart = 0; transcriptStart + length <= transcriptTokens.length; transcriptStart += 1) {
-            const matches = phrase.every((token, offset) => token.value === transcriptTokens[transcriptStart + offset].value);
-            if (matches) {
-              located = {
-                start: transcriptTokens[transcriptStart].start,
-                end: transcriptTokens[transcriptStart + length - 1].end,
-              };
-              break outer;
-            }
-          }
-        }
-      }
-      }
-    }
+    const located = locateRubricItem(transcript, transcriptTokens, item);
 
     return {
       item,
       itemIndex,
       matched: Boolean(located),
+      // Highlight drives the verdict: mentioned => passed, missing => not passed.
+      passed: Boolean(located),
       matchedText: located ? transcript.slice(located.start, located.end) : "",
       start: located?.start ?? -1,
       end: located?.end ?? -1,
