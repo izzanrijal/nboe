@@ -29,9 +29,15 @@ describe("GripHub provider", () => {
     expect(griphub).toContain('response_format: { type: "json_object" }');
   });
 
-  it("retries only transient failures", () => {
-    expect(griphub).toMatch(/status === 429 \|\| status >= 500/);
-    expect(griphub).toContain("MESSAGE_MAX_ATTEMPTS");
+  it("retries once when the model replies with prose instead of JSON", () => {
+    expect(griphub).toContain("gripHubJson");
+    expect(griphub).toMatch(/Balas ULANG HANYA dengan objek JSON/);
+  });
+
+  it("scans for a balanced JSON object embedded in prose", () => {
+    // The parser must not rely on the whole reply being JSON.
+    expect(griphub).toMatch(/depth \+= 1/);
+    expect(griphub).toMatch(/inString/);
   });
 });
 
@@ -49,7 +55,9 @@ describe("exam AI features use GripHub instead of the Lovable gateway", () => {
   }
 
   it("evaluate-exam parses the model reply defensively", () => {
-    expect(evaluateExam).toContain("parseJsonReply");
+    // DeepSeek behind GripHub sometimes ignores response_format and replies with
+    // prose, so grading must go through the retrying JSON helper.
+    expect(evaluateExam).toContain("gripHubJson");
     expect(evaluateExam).not.toContain("call.result.output");
   });
 
