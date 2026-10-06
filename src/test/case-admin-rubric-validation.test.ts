@@ -1,37 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { getRubricQualityError } from "../../supabase/functions/case-admin/rubric-validation";
 
+const item = (points = 2, isCritical = true) => ({ points, isCritical });
+
 describe("case-admin focused rubric validation", () => {
-  it("accepts a focused 3-item active rubric", () => {
-    expect(getRubricQualityError([
-      { points: 2, isCritical: true },
-      { points: 2, isCritical: false },
-      { points: 2, isCritical: false },
-    ])).toBeNull();
-  });
-
-  it("rejects a 2-item active rubric", () => {
-    expect(getRubricQualityError([
-      { points: 5, isCritical: true },
-      { points: 5, isCritical: false },
-    ])).toBe("Active rubric must contain at least 3 items (got 2)");
-  });
-
-  it("allows an empty item list to disable the rubric", () => {
+  it("treats an empty rubric as disabling checklist grading", () => {
     expect(getRubricQualityError([])).toBeNull();
   });
 
-  it("requires one critical item and at least 6 total points when active", () => {
-    expect(getRubricQualityError([
-      { points: 2, isCritical: false },
-      { points: 2, isCritical: false },
-      { points: 2, isCritical: false },
-    ])).toBe("At least 1 rubric item must be isCritical:true");
+  it("accepts a focused 5-item rubric", () => {
+    expect(getRubricQualityError(Array.from({ length: 5 }, () => item()))).toBeNull();
+  });
 
-    expect(getRubricQualityError([
-      { points: 1, isCritical: true },
-      { points: 1, isCritical: false },
-      { points: 1, isCritical: false },
-    ])).toBe("Rubric total points must be >= 6 (got 3)");
+  it("accepts a focused 7-item rubric", () => {
+    expect(getRubricQualityError(Array.from({ length: 7 }, () => item()))).toBeNull();
+  });
+
+  it("rejects a rubric that is too granular", () => {
+    const error = getRubricQualityError(Array.from({ length: 15 }, () => item(3, false)));
+    expect(error).toContain("5-7 broad items");
+  });
+
+  it("rejects a 4-item rubric", () => {
+    const error = getRubricQualityError(Array.from({ length: 4 }, () => item()));
+    expect(error).toContain("5-7 broad items");
+  });
+
+  it("requires at least 2 critical items and 10 total points", () => {
+    expect(getRubricQualityError(Array.from({ length: 5 }, () => item(2, false)))).toBe(
+      "At least 2 rubric items must be isCritical:true",
+    );
+    expect(getRubricQualityError([item(1, true), item(1, true), item(1, false), item(1, false), item(1, false)]))
+      .toContain(">= 10");
+  });
+
+  it("rejects a rubric that repeats the same line", () => {
+    const withText = (text: string, points = 2, isCritical = true) => ({ text, points, isCritical });
+    const error = getRubricQualityError([
+      withText("Atropin 0.5 mg IV"),
+      withText("Kalsium glukonat 10%"),
+      withText("Atropin 0.5 mg IV"),
+      withText("Insulin + dextrose"),
+      withText("Sodium bikarbonat"),
+    ]);
+    expect(error).toContain("duplicate");
   });
 });
