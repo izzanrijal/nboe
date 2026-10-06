@@ -2,16 +2,26 @@ export interface RubricHighlightItem {
   item: string;
   passed?: boolean;
   evidenceQuote?: string;
+  /**
+   * How well the CANDIDATE covered this line, taken from the grading report.
+   * This is the source of truth for what the participant did or did not say —
+   * never the presence of a phrase in the AI model answer, which by definition
+   * covers every rubric line.
+   */
+  coverage?: "full" | "partial" | "none";
 }
 
 export interface RubricMatch {
   item: RubricHighlightItem;
   itemIndex: number;
+  /** The rubric phrase occurs in the supplied text (used to place a highlight). */
   matched: boolean;
   matchedText: string;
   start: number;
   end: number;
-  /** Highlight-driven verdict: a rubric line counts only when its phrase occurs. */
+  /** Did the candidate actually cover this line, per the grading report? */
+  coveredByCandidate: boolean;
+  /** Alias of coveredByCandidate; kept so existing callers keep working. */
   passed: boolean;
 }
 
@@ -153,7 +163,12 @@ const locateRubricItem = (
 /**
  * Match rubric items against a body of text (the AI model answer, or a
  * transcript). Returns where each item was found so the caller can highlight
- * the mentioned phrases and emphasize the missing ones.
+ * the phrases a participant still needs to learn.
+ *
+ * IMPORTANT: locating a phrase only decides WHERE a highlight goes. Whether the
+ * candidate covered the line comes exclusively from the grading report, because
+ * the AI model answer is written to contain every rubric line — deriving the
+ * verdict from it would report every gap as "already said".
  */
 export const findRubricMatches = (
   text: string,
@@ -163,13 +178,16 @@ export const findRubricMatches = (
 
   return rubricItems.map((item, itemIndex) => {
     const located = locateRubricItem(text, textTokens, item);
+    const coveredByCandidate = item.coverage
+      ? item.coverage !== "none"
+      : item.passed === true;
 
     return {
       item,
       itemIndex,
       matched: Boolean(located),
-      // Highlight drives the verdict: mentioned => passed, missing => not passed.
-      passed: Boolean(located),
+      coveredByCandidate,
+      passed: coveredByCandidate,
       matchedText: located ? text.slice(located.start, located.end) : "",
       start: located?.start ?? -1,
       end: located?.end ?? -1,
@@ -177,12 +195,19 @@ export const findRubricMatches = (
   });
 };
 
+/**
+ * Segments of the AI answer to mark. Only lines the CANDIDATE missed are
+ * highlighted, so a highlight always reads as "you did not say this yet".
+ * Previously every located phrase was marked, which made the panel look as
+ * though the participant had said things they never did.
+ */
 export const buildHighlightSegments = (
   text: string,
   matches: RubricMatch[],
 ): HighlightSegment[] => {
+  const gaps = matches.filter((match) => match.matched && !match.coveredByCandidate);
   const boundaries = new Set([0, text.length]);
-  matches.filter((match) => match.matched).forEach((match) => {
+  gaps.forEach((match) => {
     boundaries.add(match.start);
     boundaries.add(match.end);
   });
@@ -190,8 +215,8 @@ export const buildHighlightSegments = (
 
   return sorted.slice(0, -1).map((start, index) => {
     const end = sorted[index + 1];
-    const matchedItems = matches
-      .filter((match) => match.matched && match.start < end && match.end > start)
+    const matchedItems = gaps
+      .filter((match) => match.start < end && match.end > start)
       .map((match) => match.itemIndex);
     return {
       text: text.slice(start, end),
@@ -202,9 +227,9 @@ export const buildHighlightSegments = (
 };
 
 /**
- * Rubric lines the answer does NOT mention. The UI renders these in bold+italic
- * so the participant sees what they were expected to say.
+ * Rubric lines the candidate did NOT cover, per the grading report. The UI
+ * renders these in bold+italic so the participant sees what to say next time.
  */
 export const findUnmentionedItems = (
   matches: RubricMatch[],
-): RubricMatch[] => matches.filter((match) => !match.matched);
+): RubricMatch[] => matches.filter((match) => !match.coveredByCandidate);

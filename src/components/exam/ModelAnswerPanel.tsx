@@ -18,9 +18,10 @@ interface ModelAnswer {
 
 /**
  * The AI model answer is the teaching artefact: it is generated to pass every
- * rubric line. We therefore highlight the rubric phrasing the answer actually
- * contains, and list the rubric lines it does not, so the participant knows
- * exactly what they were expected to say.
+ * rubric line. What the PARTICIPANT said is a separate fact that comes from the
+ * grading report, so this panel highlights only the lines the participant
+ * missed and lists the same lines in bold+italic. Highlighting every phrase the
+ * answer contains would falsely imply the participant had said it.
  */
 const ModelAnswerPanel = ({
   resultId,
@@ -69,13 +70,20 @@ const ModelAnswerPanel = ({
             </p>
           )}
 
+          {segments.some((s) => s.highlighted) && (
+            <p className="text-xs text-muted-foreground">
+              Bagian yang <mark className="rubric-highlight rounded-sm px-0.5">disorot</mark> adalah
+              yang <span className="font-semibold">belum Anda sebutkan</span> — bukan yang sudah Anda ucapkan.
+            </p>
+          )}
+
           {segments.length > 0 ? (
             <p className="text-sm whitespace-pre-wrap leading-relaxed">
               {segments.map((segment, idx) => segment.highlighted ? (
                 <mark
                   key={idx}
                   className="rubric-highlight rounded-sm px-0.5"
-                  title={`Sesuai butir rubrik ${segment.matchedItems.map((i) => i + 1).join(", ")}`}
+                  title={`Belum Anda sebutkan — butir rubrik ${segment.matchedItems.map((i) => i + 1).join(", ")}`}
                 >
                   {segment.text}
                 </mark>
@@ -89,7 +97,7 @@ const ModelAnswerPanel = ({
             <div className="rounded-md border border-border bg-background p-2 space-y-1">
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                Belum disebut di jawaban ini — seharusnya Anda sebutkan:
+                Belum Anda sebutkan — seharusnya Anda ucapkan:
               </p>
               <ul className="space-y-0.5">
                 {unmentioned.map((match) => (
