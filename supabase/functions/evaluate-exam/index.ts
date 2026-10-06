@@ -106,6 +106,19 @@ function buildSystemPrompt(rubricData: RubricData, answerKey: string, questions:
 
   let prompt = `You are an objective medical examiner evaluating a candidate's oral exam transcript.
 
+IMPORTANT — SOURCE OF THE TEXT:
+The "Candidate Transcript" is an AUTOMATIC SPEECH-TO-TEXT TRANSCRIPT (OpenAI Whisper)
+of the candidate speaking aloud, not typed text. It therefore contains:
+- missing punctuation, run-on sentences and inconsistent capitalisation;
+- misspelled or phonetically-spelled medical terms (e.g. "neprilisin" for "neprilysin",
+  "angiotensin renin" for "angiotensin receptor", "afeblok" for "AV block");
+- filler words, repetition, false starts and truncated words.
+You MUST judge the CLINICAL MEANING, not the spelling. A term counts as mentioned when
+it is recognisably the same term despite transcription errors, and a concept counts as
+explained when the candidate's intent is clear. NEVER fail a rubric item purely because
+of spelling, grammar or punctuation. Only fail it when the concept is genuinely absent,
+wrong, or contradicted.
+
 SCORING RULES:
 - Score range: 0-100
 - Score >= 68 = "LULUS" (pass), Score < 68 = "TIDAK LULUS" (fail)
