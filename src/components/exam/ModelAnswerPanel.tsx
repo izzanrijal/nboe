@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, Loader2 } from "lucide-react";
-import MarkdownLite from "@/components/MarkdownLite";
+import { invokeExamAi } from "@/lib/examAi";
 
 interface ModelAnswer {
   text: string;
@@ -17,11 +16,7 @@ const ModelAnswerPanel = ({ resultId, cached }: { resultId: string; cached?: Mod
     staleTime: Infinity,
     retry: false,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("generate-model-answer", {
-        body: { result_id: resultId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await invokeExamAi("generate-model-answer", resultId);
       return data.modelAnswer as ModelAnswer;
     },
   });
@@ -29,7 +24,7 @@ const ModelAnswerPanel = ({ resultId, cached }: { resultId: string; cached?: Mod
 
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
-      <h4 className="text-sm font-semibold flex items-center gap-2">
+      <h4 className="text-sm font-normal flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" /> Jawaban AI (contoh lulus semua rubrik)
       </h4>
       {answer ? (
@@ -39,7 +34,7 @@ const ModelAnswerPanel = ({ resultId, cached }: { resultId: string; cached?: Mod
               Disimulasikan untuk {Math.round(answer.timeLimitSeconds / 60)} menit · ±{answer.wordCount} kata · {answer.wpm} kata/menit
             </p>
           )}
-          <MarkdownLite>{answer.text}</MarkdownLite>
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">{answer.text.replace(/^#{1,6}\s+/gm, "").replace(/\*\*|__|\*/g, "")}</p>
         </>
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground flex items-center gap-2">

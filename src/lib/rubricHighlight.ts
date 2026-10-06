@@ -1,6 +1,7 @@
 export interface RubricHighlightItem {
   item: string;
   passed: boolean;
+  evidenceQuote?: string;
 }
 
 export interface RubricMatch {
@@ -42,7 +43,9 @@ const tokenize = (text: string): Token[] => {
   const tokens: Token[] = [];
   for (const match of text.matchAll(/[\p{L}\p{N}]+/gu)) {
     const raw = match[0];
-    tokens.push({ value: normalize(raw), start: match.index!, end: match.index! + raw.length });
+    const start = match.index;
+    if (start === undefined) continue;
+    tokens.push({ value: normalize(raw), start, end: start + raw.length });
   }
   return tokens;
 };
@@ -63,10 +66,20 @@ export const findRubricMatches = (
     let located: { start: number; end: number } | undefined;
 
     if (item.passed) {
+      if (item.evidenceQuote) {
+        const start = transcript.indexOf(item.evidenceQuote);
+        if (start >= 0) located = { start, end: start + item.evidenceQuote.length };
+      }
+      // Legacy reports may have no saved evidence. Require a meaningful full
+      // phrase, never a single keyword that cannot establish clinical accuracy.
+      if (!located && item.evidenceQuote === undefined) {
       outer: for (let length = rubricTokens.length; length >= 1; length -= 1) {
         for (let rubricStart = 0; rubricStart + length <= rubricTokens.length; rubricStart += 1) {
           const phrase = rubricTokens.slice(rubricStart, rubricStart + length);
           if (!isUsefulPhrase(phrase)) continue;
+          const usefulCount = phrase.filter((token) => !ignoredSingleTokens.has(token.value)).length;
+          const requiredCount = Math.min(2, rubricTokens.filter((token) => !ignoredSingleTokens.has(token.value)).length);
+          if (usefulCount < requiredCount) continue;
           for (let transcriptStart = 0; transcriptStart + length <= transcriptTokens.length; transcriptStart += 1) {
             const matches = phrase.every((token, offset) => token.value === transcriptTokens[transcriptStart + offset].value);
             if (matches) {
@@ -78,6 +91,7 @@ export const findRubricMatches = (
             }
           }
         }
+      }
       }
     }
 

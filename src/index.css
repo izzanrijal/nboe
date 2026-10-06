@@ -37,6 +37,7 @@ All colors MUST be HSL.
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+    --rubric-highlight: 50 96% 80%;
 
     --sidebar-background: 0 0% 98%;
 
@@ -56,6 +57,7 @@ All colors MUST be HSL.
   }
 
   .dark {
+    --rubric-highlight: 45 65% 25%;
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
@@ -101,5 +103,9 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+  .rubric-highlight {
+    background-color: hsl(var(--rubric-highlight));
+    color: hsl(var(--foreground));
   }
 }
