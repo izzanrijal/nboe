@@ -52,7 +52,7 @@ const SCHEMA_DOC = {
     initial_prompt: "string >=400 chars; must contain >=3 of RIWAYAT/PEMERIKSAAN/TUGAS/EKG/LAB",
     questions_text: "string >=300 chars; >=5 numbered tasks; must NOT reveal rubric items",
     answer_key_text: "string >=800 chars; expected candidate verbalisation, numbers, thresholds",
-    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — OPSIONAL. Bila dikirim: >=15 items, >=8 critical, total points >=40 → rubric_mode='checklist'. Bila dikosongkan/tidak dikirim → rubric_mode='none' (tanpa daftar tilik, penilaian berbasis answer key)",
+    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — OPSIONAL. Bila dikirim: 5-7 butir LUAS, >=2 critical, total points >=10 → rubric_mode='checklist'. Bila dikosongkan/tidak dikirim → rubric_mode='none' (tanpa daftar tilik, penilaian berbasis answer key)",
     media_notes: "[{ description, category: case_media|examination|additional_info, trigger_keywords: [] }] — informational only, media uploaded manually",
     created_by_email: "optional admin email to own the case",
   },
@@ -60,7 +60,7 @@ const SCHEMA_DOC = {
     "initial_prompt >= 400 chars and >=3 section markers",
     "questions_text >= 300 chars and >=5 numbered tasks",
     "answer_key_text >= 800 chars",
-    "checklist_rubric OPTIONAL: bila dikirim harus >=15 items, >=8 isCritical:true, total points >=40; bila kosong/tidak dikirim -> rubric_mode=none (tanpa daftar tilik)",
+    "checklist_rubric OPTIONAL: bila dikirim harus 5-7 butir luas (gabungkan butir rinci), >=2 isCritical:true, total points >=10; bila kosong/tidak dikirim -> rubric_mode=none (tanpa daftar tilik)",
     "title must be unique (409 otherwise)",
     "inserted as status=draft (menunggu review admin); source=agent_api",
   ],
@@ -125,19 +125,32 @@ Deno.serve(async (req) => {
   const criticalCount = items.filter((i) => i.isCritical).length;
   const totalPoints = items.reduce((s, i) => s + i.points, 0);
 
-  // Gerbang mutu rubrik HANYA berlaku bila pengirim memakai daftar tilik.
-  // Kiriman parsial (1–14 butir) = menengah, tolak agar tidak ambigu.
-  if (items.length > 0 && items.length < 15) {
+  // Reject a rubric that repeats the same line. Padding to reach a minimum item
+  // count by duplicating points penalises the same answer twice and distorts the
+  // score, so the duplicate is treated as a generation error.
+  const normalizedTexts = items.map((i) => (i.text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim());
+  const duplicates = normalizedTexts.filter((t, idx) => t && normalizedTexts.indexOf(t) !== idx);
+  if (duplicates.length > 0) {
     return json(400, {
-      error: `Rubrik parsial tidak didukung: ${items.length} butir. Kirim ≥15 butir (checklist) atau kosongkan untuk penilaian tanpa daftar tilik (rubric_mode=none).`,
+      error: `Rubrik mengandung ${duplicates.length} butir duplikat (contoh: "${duplicates[0].slice(0, 60)}"). Setiap butir harus unik.`,
     });
   }
-  if (items.length >= 15) {
-    if (criticalCount < 8) {
-      return json(400, { error: `At least 8 rubric items must be isCritical:true (got ${criticalCount})` });
+
+  // Rubrik harus RINGKAS dan REALISTIS. Peserta ujian lisan tidak mungkin
+  // mengucapkan 15+ butir rinci dalam batas waktu, sehingga rubrik panjang
+  // membuat hampir semua butir gagal dan peserta kehilangan poin meski
+  // jawabannya wajar. Batasi ke 5-7 butir yang luas namun tetap terukur.
+  if (items.length > 0) {
+    if (items.length < 5 || items.length > 7) {
+      return json(400, {
+        error: `Rubrik harus 5-7 butir luas (got ${items.length}). Gabungkan butir rinci menjadi poin-poin utama; atau kosongkan untuk penilaian tanpa daftar tilik (rubric_mode=none).`,
+      });
     }
-    if (totalPoints < 40) {
-      return json(400, { error: `Rubric total points must be >= 40 (got ${totalPoints})` });
+    if (criticalCount < 2) {
+      return json(400, { error: `Minimal 2 butir rubrik harus isCritical:true (got ${criticalCount})` });
+    }
+    if (totalPoints < 10) {
+      return json(400, { error: `Total poin rubrik harus >= 10 (got ${totalPoints})` });
     }
   }
 

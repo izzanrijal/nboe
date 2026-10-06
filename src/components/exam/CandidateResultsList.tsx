@@ -15,7 +15,11 @@ interface ScoreItem {
   item: string;
   passed: boolean;
   comment?: string;
+  /** Points earned: 2 = fully mentioned, 1 = mentioned but incomplete, 0 = not mentioned. */
   points?: number;
+  /** Ceiling for this rubric line (2). */
+  maxPoints?: number;
+  coverage?: "full" | "partial" | "none";
   isCritical?: boolean;
   evidenceQuote?: string;
 }
@@ -189,25 +193,37 @@ const CandidateResultsList = () => {
                       <h4 className="text-sm font-normal mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
                         {parsed.items.map((item, idx) => {
-                          // Grading verdict comes from the evaluation report. The
-                          // transcript is raw speech-to-text, so we do not try to
-                          // re-derive passes by string-matching it.
-                          const passed = item.passed;
-                          const mentioned = passed;
+                          // Single source of truth: the evaluation report. Scoring
+                          // per rubric line is 2 (fully mentioned), 1 (mentioned
+                          // but incomplete) or 0 (not mentioned).
+                          const earned = item.points ?? 0;
+                          const max = item.maxPoints ?? 2;
+                          const coverage = item.coverage ?? (item.passed ? "full" : "none");
+                          const mentioned = coverage !== "none";
+                          const label = coverage === "full"
+                            ? "Disebut lengkap"
+                            : coverage === "partial"
+                              ? "Disebut, belum lengkap"
+                              : "Belum disebut";
+                          const reason = item.evidenceQuote
+                            ? `Kutipan: "${item.evidenceQuote}"`
+                            : (item.comment || label);
                           return (
-                            <div key={idx} className={`flex items-start gap-2 text-sm ${mentioned ? "" : "italic text-muted-foreground"}`}>
-                              <Badge variant={passed ? "default" : "destructive"} className="text-xs shrink-0">
-                                {passed ? "PASS" : "FAIL"}
+                            <div key={idx} className={`flex items-start gap-2 text-sm ${mentioned ? "" : "text-muted-foreground"}`}>
+                              <Badge variant={coverage === "full" ? "default" : coverage === "partial" ? "secondary" : "destructive"} className="text-xs shrink-0">
+                                {label}
                               </Badge>
                               {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
-                              <span className={`flex-1 font-normal ${mentioned ? "" : "font-bold italic"}`}>{item.item}</span>
-                              {!mentioned && <Badge variant="outline" className="text-[10px] font-normal shrink-0">belum disebut</Badge>}
-                              {item.points != null && (
-                                <span className="text-xs font-mono text-muted-foreground shrink-0">
-                                  {passed ? item.points : 0}/{item.points} pts
-                                </span>
-                              )}
-                              {item.comment && <span className="text-muted-foreground text-xs">— {item.comment}</span>}
+                              {/*
+                                A rubric line the participant did not mention is
+                                shown bold+italic so it reads as "you should have
+                                said this". The weight classes must be mutually
+                                exclusive: combining font-normal with font-bold
+                                lets font-normal win and the emphasis disappears.
+                              */}
+                              <span className={`flex-1 ${mentioned ? "font-normal" : "font-bold italic"}`}>{item.item}</span>
+                              <span className="text-xs font-mono text-muted-foreground shrink-0">{earned}/{max} poin</span>
+                              <span className="text-muted-foreground text-xs">{reason}</span>
                             </div>
                           );
                         })}

@@ -56,7 +56,7 @@ const isTransientStatus = (status: number) => status === 429 || status >= 500;
 export async function openAIChat(
   config: OpenAIConfig,
   messages: { role: "system" | "user"; content: string }[],
-  options: { json?: boolean; signal?: AbortSignal; maxCompletionTokens?: number } = {},
+  options: { json?: boolean; signal?: AbortSignal; maxCompletionTokens?: number; deterministic?: boolean } = {},
 ): Promise<string> {
   let lastError: unknown;
 
@@ -72,6 +72,11 @@ export async function openAIChat(
           model: config.model,
           messages,
           max_completion_tokens: options.maxCompletionTokens ?? 16000,
+          // Grading must be reproducible: the same answer should not score
+          // differently between runs. Only `seed` is sent — this reasoning model
+          // rejects `temperature` ("Only the default (1) value is supported"),
+          // which is why the deterministic flag must never add it back.
+          ...(options.deterministic ? { seed: 7 } : {}),
           ...(options.json ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: options.signal,
@@ -174,9 +179,9 @@ export function parseJsonReply<T = unknown>(raw: string): T {
 export async function openAIJson<T = unknown>(
   config: OpenAIConfig,
   messages: { role: "system" | "user"; content: string }[],
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; deterministic?: boolean } = {},
 ): Promise<T> {
-  const first = await openAIChat(config, messages, { json: true, signal: options.signal });
+  const first = await openAIChat(config, messages, { json: true, deterministic: options.deterministic, signal: options.signal });
   try {
     return parseJsonReply<T>(first);
   } catch {
@@ -190,7 +195,7 @@ export async function openAIJson<T = unknown>(
           "tanpa penjelasan, tanpa pagar kode, tanpa teks lain sebelum atau sesudah JSON.",
       },
     ];
-    const second = await openAIChat(config, retryMessages, { json: true, signal: options.signal });
+    const second = await openAIChat(config, retryMessages, { json: true, deterministic: options.deterministic, signal: options.signal });
     return parseJsonReply<T>(second);
   }
 }

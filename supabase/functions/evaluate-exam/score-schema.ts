@@ -4,7 +4,20 @@ const boolean = { type: "boolean" };
 const strings = { type: "array", items: string };
 const object = (properties: Record<string, unknown>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 export const scoreSchema = object({
-  items: { type: "array", items: object({ item: string, passed: boolean, comment: string, points: number, isCritical: boolean, evidenceQuote: string }) },
+  items: {
+    type: "array",
+    items: object({
+      item: string,
+      passed: boolean,
+      // "full" = the rubric point is properly covered; "partial" = mentioned but
+      // incomplete/vague; "none" = not mentioned. Scoring: full=2, partial=1, none=0.
+      coverage: { type: "string", enum: ["full", "partial", "none"] },
+      comment: string,
+      points: number,
+      isCritical: boolean,
+      evidenceQuote: string,
+    }),
+  },
   totalScore: number, totalPossible: number, score: number,
   passStatus: { type: "string", enum: ["LULUS", "TIDAK LULUS"] },
   hasCriticalFail: boolean, reasoning: string, tips: string,

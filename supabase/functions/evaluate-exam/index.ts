@@ -1,6 +1,7 @@
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
 import { getOpenAIConfig, openAIChat, openAIJson } from "../_shared/openai.ts";
+import { quoteSupportedByTranscript } from "../_shared/transcript-match.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -58,7 +59,23 @@ Deno.serve(async (req) => {
     const answerKey = answerKeys?.answer_key_text || "";
     const questions = clinicalCase?.questions_text || "";
     const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions) + `
-Untuk setiap item PASS, evidenceQuote WAJIB berupa kutipan persis dari transkrip, cukup lengkap untuk membuktikan kriteria terpenuhi secara klinis. Sinonim boleh diterima, tetapi bukan hanya satu kata umum. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.
+Untuk SETIAP butir rubrik, isi field "coverage" dengan salah satu:
+- "full"    = butir BENAR-BENAR disebut sesuai rubrik (boleh beda kata, yang penting maknanya kena dan lengkap)
+- "partial" = butir DISEBUT tetapi belum lengkap / hanya sebagian / masih kabur
+- "none"    = butir TIDAK disebut sama sekali
+Passed = true hanya bila coverage "full" atau "partial" (coverage "none" -> passed=false).
+Sesuaikan "passed" dengan "coverage": full/partial => true, none => false.
+
+PENILAIAN BUTIR (tiap butir maksimal 2 poin):
+- "full"    -> disebutkan lengkap => dapat 2 poin
+- "partial" -> disebutkan namun tidak lengkap => dapat 1 poin
+- "none"    -> tidak disebut => 0 poin
+Isi field "points" dengan poin yang DIDAPAT (2, 1, atau 0), bukan poin maksimal. Butir yang hanya "partial" TIDAK boleh diberi 2 poin.
+
+Setiap butir rubrik WAJIB muncul di "items" dengan urutan dan teks yang persis sama seperti rubrik. Jangan menambah atau mengurangi butir.
+
+Untuk setiap butir dengan coverage "full" atau "partial", evidenceQuote WAJIB berupa POTONGAN PERSIS dari transkrip (salin apa adanya, termasuk salah eja/tanpa tanda baca) yang membuktikan butir tersebut disebut. JANGAN memperbaiki ejaan atau menyusun ulang kalimat saat mengutip. Untuk coverage "none", evidenceQuote="".
+Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.
 
 Balas HANYA dengan satu objek JSON (tanpa pagar kode, tanpa teks lain) dengan skema:
 ${JSON.stringify(scoreSchema)}`;
@@ -70,19 +87,71 @@ ${JSON.stringify(scoreSchema)}`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        { signal: req.signal },
+        { deterministic: true, signal: req.signal },
       );
       if (!scoreReport || typeof scoreReport !== "object") throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
       const assessed = Array.isArray(scoreReport.items) ? scoreReport.items : [];
+      // Per-reviewer scoring rule: a rubric line is worth up to 2 points.
+      //   2 = mentioned fully (the rubric point is really covered)
+      //   1 = mentioned but incomplete
+      //   0 = not mentioned (shown bold+italic so the candidate knows to say it)
+      // The rubric is the source of truth: it must match the case, and we do not
+      // hand out the full 2 for a vague or partial mention.
+      const FULL_POINTS = 2;
       scoreReport.items = (rubricData.enabled ? rubricData.items : assessed).map((item: any, index: number) => {
         const evaluated = assessed[index];
         const quote = typeof evaluated?.evidenceQuote === "string" ? evaluated.evidenceQuote.trim() : "";
-        const passed = Boolean(evaluated?.passed && quote && transcript.includes(quote));
-        return { item: item.text ?? item.item, points: item.points, isCritical: item.isCritical, passed,
-          evidenceQuote: passed ? quote : "", comment: evaluated?.comment ?? "Tidak ditemukan bukti jawaban." };
+        const note = typeof evaluated?.comment === "string" ? evaluated.comment : "";
+        // The transcript is raw Whisper output, so the model's quote is verified
+        // with a speech-to-text tolerant comparison rather than an exact match.
+        const quoteOk = quote ? quoteSupportedByTranscript(transcript, quote) : false;
+        const saysAbsent = /tidak (disebut|menyebut|ada|ditemukan)|belum (disebut|ada)|tidak dijelaskan|tidak menyebutkan/i.test(note);
+
+        // The MODEL's "coverage" is the primary judgment: it reads the clinical
+        // meaning, which is what matters. The transcript check is only a guard
+        // against a fabricated quote, never a reason to erase a real mention.
+        //
+        // Earlier this code required quoteOk for any credit, so an unverifiable
+        // quote (common with Whisper's mangled spelling) silently zeroed an item
+        // the candidate had actually answered, and the same answer scored
+        // differently between runs.
+        const rawCoverage = String(evaluated?.coverage ?? "").toLowerCase();
+        let coverage: "full" | "partial" | "none";
+        if (saysAbsent || rawCoverage === "none") {
+          // The model explicitly says it is missing.
+          coverage = "none";
+        } else if (rawCoverage === "full") {
+          coverage = "full";
+        } else if (rawCoverage === "partial") {
+          coverage = "partial";
+        } else if (evaluated?.passed) {
+          // Older/looser replies without a coverage field.
+          coverage = "partial";
+        } else {
+          coverage = "none";
+        }
+
+        // A quote that we CAN verify but that the model called absent means the
+        // candidate did say it. Never let that cost the point outright.
+        if (coverage === "none" && !saysAbsent && quoteOk) coverage = "partial";
+
+        const passed = coverage !== "none";
+        const points = coverage === "full" ? FULL_POINTS : coverage === "partial" ? 1 : 0;
+        return {
+          item: item.text ?? item.item,
+          points,
+          maxPoints: FULL_POINTS,
+          isCritical: item.isCritical,
+          passed,
+          coverage,
+          evidenceQuote: coverage !== "none" && quoteOk ? quote : "",
+          comment: note || (coverage === "full" ? "Disebut lengkap." : coverage === "partial" ? "Disebut namun belum lengkap." : "Tidak disebutkan."),
+        };
       });
-      scoreReport.totalPossible = scoreReport.items.reduce((sum: number, item: any) => sum + item.points, 0);
-      scoreReport.totalScore = scoreReport.items.reduce((sum: number, item: any) => sum + (item.passed ? item.points : 0), 0);
+      // `points` is the earned score, `maxPoints` the ceiling, so totals are
+      // straight sums. Each rubric line caps at 2.
+      scoreReport.totalPossible = scoreReport.items.reduce((sum: number, item: any) => sum + (item.maxPoints ?? 2), 0);
+      scoreReport.totalScore = scoreReport.items.reduce((sum: number, item: any) => sum + (item.points ?? 0), 0);
       if (rubricData.enabled) scoreReport.score = scoreReport.totalPossible > 0 ? Math.round(scoreReport.totalScore / scoreReport.totalPossible * 100) : 0;
       scoreReport.hasCriticalFail = scoreReport.items.some((item: any) => item.isCritical && !item.passed);
       scoreReport.passStatus = scoreReport.score >= 68 && !scoreReport.hasCriticalFail ? "LULUS" : "TIDAK LULUS";
