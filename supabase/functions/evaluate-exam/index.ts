@@ -1,199 +1,94 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Output, jsonSchema } from "npm:ai@6";
+import { createResponsesCall } from "../_shared/responses.ts";
+import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
+import { examStream } from "../_shared/exam-stream.ts";
+import { scoreSchema } from "./score-schema.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-interface RubricItem {
-  text: string;
-  points: number;
-  isCritical: boolean;
-}
-
-interface RubricData {
-  enabled: boolean;
-  items: RubricItem[];
-}
+interface RubricItem { text: string; points: number; isCritical: boolean; }
+interface RubricData { enabled: boolean; items: RubricItem[]; }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     const { result_id } = await req.json();
-    if (!result_id) {
-      return new Response(JSON.stringify({ error: "result_id required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const context = await getExamAiContext(req, result_id);
+    if (context.response) return context.response;
+    const { admin: supabase, result } = context;
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-
-    if (!openaiKey) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (!lovableApiKey) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // 1. Fetch exam result
-    const { data: result, error: resultErr } = await supabase
-      .from("exam_results").select("*").eq("id", result_id).single();
-    if (resultErr || !result) {
-      return new Response(JSON.stringify({ error: "Result not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Fix #2: Server-side timer enforcement
-    const { data: sessionData } = await supabase
-      .from("exam_sessions").select("case_id, session_start_time").eq("id", result.session_id).single();
-
-    if (!sessionData) {
-      return new Response(JSON.stringify({ error: "Session not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // 2. Fetch case data (non-sensitive) + answer keys from secure table
+    if (!lovableApiKey) return json({ error: "Konfigurasi Lovable AI belum tersedia." }, 500);
+    const { data: sessionData } = await supabase.from("exam_sessions")
+      .select("case_id, session_start_time").eq("id", result.session_id).single();
+    if (!sessionData) return json({ error: "Sesi ujian tidak ditemukan." }, 404);
     const [caseResult, answerKeyResult] = await Promise.all([
       supabase.from("clinical_cases").select("title, questions_text, time_limit_seconds").eq("id", sessionData.case_id).single(),
-      supabase.from("case_answer_keys").select("answer_key_text, checklist_rubric").eq("case_id", sessionData.case_id).single(),
+      supabase.from("case_answer_keys").select("answer_key_text, checklist_rubric").eq("case_id", sessionData.case_id).maybeSingle(),
     ]);
-
+    if (caseResult.error) return json({ error: "Soal ujian tidak ditemukan." }, 404);
+    if (answerKeyResult.error) return json({ error: "Kunci jawaban gagal dimuat." }, 500);
     const clinicalCase = caseResult.data;
     const answerKeys = answerKeyResult.data;
-
-    // 3. Transcribe audio via OpenAI Whisper
     let transcript = result.transcript;
-    if (!transcript && result.audio_file_url) {
-      const { data: audioData, error: audioErr } = await supabase.storage
-        .from("exam-audio").download(result.audio_file_url);
-      if (audioErr) {
-        console.error("Audio download error:", audioErr);
-        return new Response(JSON.stringify({ error: "Failed to download audio" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (!transcript?.trim() && result.audio_file_url) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (!openaiKey) return json({ error: "Konfigurasi transkripsi OpenAI belum tersedia." }, 500);
+      const { data: audioData, error: audioErr } = await supabase.storage.from("exam-audio").download(result.audio_file_url);
+      if (audioErr || !audioData) return json({ error: "Rekaman gagal diunduh." }, 500);
+      if (!audioData.size) return json({ error: "Rekaman kosong. Tidak ada jawaban untuk dinilai." }, 400);
+      if (audioData.size > 25 * 1024 * 1024) return json({ error: "Rekaman melebihi batas transkripsi 25 MB." }, 400);
       const formData = new FormData();
       const lowerName = String(result.audio_file_url).toLowerCase();
-      const isMp4 = lowerName.endsWith(".mp4") || lowerName.endsWith(".m4a") || (audioData.type || "").includes("mp4");
+      const isMp4 = /\.(mp4|m4a)$/.test(lowerName) || audioData.type.includes("mp4");
       formData.append("file", audioData, isMp4 ? "audio.mp4" : "audio.webm");
       formData.append("model", "whisper-1");
       const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${openaiKey}` },
-        body: formData,
+        method: "POST", headers: { Authorization: `Bearer ${openaiKey}` }, body: formData, signal: req.signal,
       });
       if (!whisperRes.ok) {
-        const err = await whisperRes.text();
-        console.error("Whisper error:", err);
-        return new Response(JSON.stringify({ error: "Whisper transcription failed" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        const message = await safeUpstreamError(whisperRes, "Transkripsi OpenAI gagal");
+        return json({ error: `Transkripsi OpenAI: ${message}` }, whisperRes.status);
       }
-      const whisperData = await whisperRes.json();
-      transcript = whisperData.text;
+      transcript = (await whisperRes.json()).text;
+      if (typeof transcript === "string" && transcript.trim()) {
+        const { error } = await supabase.from("exam_results").update({ transcript }).eq("id", result_id);
+        if (error) return json({ error: "Transkrip gagal disimpan." }, 500);
+      }
     }
-
-    // 4. Parse rubric from case_answer_keys
-    const rawRubric = answerKeys?.checklist_rubric;
-    let rubricData: RubricData;
-    if (rawRubric && typeof rawRubric === "object" && !Array.isArray(rawRubric) && "enabled" in rawRubric) {
-      rubricData = rawRubric as RubricData;
-    } else if (Array.isArray(rawRubric)) {
-      rubricData = {
-        enabled: rawRubric.length > 0,
-        items: rawRubric.map((text: string) => ({ text, points: 10, isCritical: false })),
-      };
-    } else {
-      rubricData = { enabled: false, items: [] };
-    }
-
+    if (typeof transcript !== "string" || !transcript.trim()) return json({ error: "Tidak ada transkrip atau rekaman untuk dinilai." }, 400);
+    const items = parseRubric(answerKeys?.checklist_rubric);
+    const rubricData = { enabled: items.length > 0, items };
     const answerKey = answerKeys?.answer_key_text || "";
     const questions = clinicalCase?.questions_text || "";
-
-    // 5. Build system prompt with answer key grading
-    const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions);
+    const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions) + `
+Untuk setiap item PASS, evidenceQuote WAJIB berupa kutipan persis dari transkrip, cukup lengkap untuk membuktikan kriteria terpenuhi secara klinis. Sinonim boleh diterima, tetapi bukan hanya satu kata umum. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.`;
     const userContent = buildUserContent(clinicalCase, rubricData, answerKey, questions, transcript);
-
-    // 6. Call Lovable AI Gateway
-    const gatewayRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.2,
-      }),
-    });
-
-    if (!gatewayRes.ok) {
-      if (gatewayRes.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (gatewayRes.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const err = await gatewayRes.text();
-      console.error("AI Gateway error:", gatewayRes.status, err);
-      return new Response(JSON.stringify({ error: "AI evaluation failed" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return examStream(async () => {
+      const call = createResponsesCall(req, { baseURL: "https://ai.gateway.lovable.dev/v1", apiKey: lovableApiKey, model: "openai/gpt-6-astra" }, [{ role: "user", content: userContent }], systemPrompt, Output.object({ schema: jsonSchema(scoreSchema) }));
+      const scoreReport: any = await call.result.output;
+      if (!scoreReport) throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
+      const assessed = Array.isArray(scoreReport.items) ? scoreReport.items : [];
+      scoreReport.items = (rubricData.enabled ? rubricData.items : assessed).map((item: any, index: number) => {
+        const evaluated = assessed[index];
+        const quote = typeof evaluated?.evidenceQuote === "string" ? evaluated.evidenceQuote.trim() : "";
+        const passed = Boolean(evaluated?.passed && quote && transcript.includes(quote));
+        return { item: item.text ?? item.item, points: item.points, isCritical: item.isCritical, passed,
+          evidenceQuote: passed ? quote : "", comment: evaluated?.comment ?? "Tidak ditemukan bukti jawaban." };
       });
-    }
-
-    const aiData = await gatewayRes.json();
-    let scoreReport;
-    try {
-      const content = aiData.choices[0].message.content;
-      scoreReport = JSON.parse(content.replace(/```json\n?/g, "").replace(/```/g, "").trim());
-    } catch {
-      scoreReport = { items: [], totalScore: 0, totalPossible: 0, score: 0, passStatus: "TIDAK LULUS", hasCriticalFail: false, reasoning: "Failed to parse AI response", tips: "" };
-    }
-
-    // 7. Update exam_results
-    const { error: updateErr } = await supabase
-      .from("exam_results")
-      .update({ transcript: transcript || null, ai_score_report: scoreReport })
-      .eq("id", result_id);
-
-    if (updateErr) {
-      console.error("Update error:", updateErr);
-      return new Response(JSON.stringify({ error: "Failed to save results" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(JSON.stringify({ success: true, score_report: scoreReport }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      scoreReport.totalPossible = scoreReport.items.reduce((sum: number, item: any) => sum + item.points, 0);
+      scoreReport.totalScore = scoreReport.items.reduce((sum: number, item: any) => sum + (item.passed ? item.points : 0), 0);
+      if (rubricData.enabled) scoreReport.score = scoreReport.totalPossible > 0 ? Math.round(scoreReport.totalScore / scoreReport.totalPossible * 100) : 0;
+      scoreReport.hasCriticalFail = scoreReport.items.some((item: any) => item.isCritical && !item.passed);
+      scoreReport.passStatus = scoreReport.score >= 68 && !scoreReport.hasCriticalFail ? "LULUS" : "TIDAK LULUS";
+      // Re-read to preserve a model answer generated concurrently.
+      const { data: latest } = await supabase.from("exam_results").select("ai_score_report").eq("id", result_id).single();
+      const cached = latest?.ai_score_report?.modelAnswer;
+      if (cached) scoreReport.modelAnswer = cached;
+      const { error } = await supabase.from("exam_results").update({ transcript, ai_score_report: scoreReport }).eq("id", result_id);
+      if (error) throw new Error("Laporan AI gagal disimpan.");
+      return { success: true, score_report: scoreReport };
     });
-  } catch (err) {
-    console.error("Unexpected error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (error) {
+    if (req.signal.aborted) return new Response(null, { status: 499, headers: corsHeaders });
+    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
 
