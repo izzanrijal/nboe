@@ -38,4 +38,16 @@ describe("rubric scoring: 2 full / 1 partial / 0 none", () => {
   it("treats any mention as passed so the footnote is not bold", () => {
     expect(evaluateExam).toMatch(/const passed = coverage !== "none"/);
   });
+
+  it("trusts the model's coverage instead of requiring a verifiable quote", () => {
+    // Requiring a verifiable quote made the same answer score differently
+    // between runs and zeroed items the candidate had actually answered.
+    expect(evaluateExam).toMatch(/rawCoverage === "full"/);
+    expect(evaluateExam).toMatch(/rawCoverage === "partial"/);
+    expect(evaluateExam).not.toMatch(/quoteOk && claimedFull/);
+  });
+
+  it("grades deterministically", () => {
+    expect(evaluateExam).toContain("deterministic: true");
+  });
 });

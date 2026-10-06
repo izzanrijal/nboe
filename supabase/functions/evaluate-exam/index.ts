@@ -87,7 +87,7 @@ ${JSON.stringify(scoreSchema)}`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        { signal: req.signal },
+        { deterministic: true, signal: req.signal },
       );
       if (!scoreReport || typeof scoreReport !== "object") throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
       const assessed = Array.isArray(scoreReport.items) ? scoreReport.items : [];
@@ -107,24 +107,33 @@ ${JSON.stringify(scoreSchema)}`;
         const quoteOk = quote ? quoteSupportedByTranscript(transcript, quote) : false;
         const saysAbsent = /tidak (disebut|menyebut|ada|ditemukan)|belum (disebut|ada)|tidak dijelaskan|tidak menyebutkan/i.test(note);
 
-        // Coverage comes from the model, but it is only trusted when we can see
-        // supporting words in the transcript.
-        //   full   -> the model is confident AND we found its quote
-        //   partial-> the model saw the idea, but it was incomplete or we could
-        //             not verify the quote verbatim
-        //   none   -> nothing supporting in the transcript
+        // The MODEL's "coverage" is the primary judgment: it reads the clinical
+        // meaning, which is what matters. The transcript check is only a guard
+        // against a fabricated quote, never a reason to erase a real mention.
+        //
+        // Earlier this code required quoteOk for any credit, so an unverifiable
+        // quote (common with Whisper's mangled spelling) silently zeroed an item
+        // the candidate had actually answered, and the same answer scored
+        // differently between runs.
+        const rawCoverage = String(evaluated?.coverage ?? "").toLowerCase();
         let coverage: "full" | "partial" | "none";
-        if (evaluated?.passed) {
-          const claimedFull = evaluated?.coverage === "full" || evaluated?.complete === true;
-          coverage = quoteOk && claimedFull ? "full" : "partial";
-        } else if (!saysAbsent && quoteOk) {
-          // Model said not passed but we found real supporting words: the
-          // candidate did mention it, just not completely.
+        if (saysAbsent || rawCoverage === "none") {
+          // The model explicitly says it is missing.
+          coverage = "none";
+        } else if (rawCoverage === "full") {
+          coverage = "full";
+        } else if (rawCoverage === "partial") {
+          coverage = "partial";
+        } else if (evaluated?.passed) {
+          // Older/looser replies without a coverage field.
           coverage = "partial";
         } else {
           coverage = "none";
         }
-        if (saysAbsent) coverage = "none";
+
+        // A quote that we CAN verify but that the model called absent means the
+        // candidate did say it. Never let that cost the point outright.
+        if (coverage === "none" && !saysAbsent && quoteOk) coverage = "partial";
 
         const passed = coverage !== "none";
         const points = coverage === "full" ? FULL_POINTS : coverage === "partial" ? 1 : 0;
