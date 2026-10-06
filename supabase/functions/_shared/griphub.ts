@@ -115,20 +115,78 @@ export async function gripHubChat(
 /**
  * Parse a JSON object out of a model reply, tolerating ```json fences and
  * leading/trailing prose that some models add despite instructions.
+ *
+ * DeepSeek on GripHub sometimes ignores `response_format: json_object` and
+ * answers in prose with an explanation before/after the JSON, so we scan for
+ * the first balanced object rather than trusting the response to be pure JSON.
  */
 export function parseJsonReply<T = unknown>(raw: string): T {
   const cleaned = raw
-    .replace(/^\s*```(?:json)?/i, "")
-    .replace(/```\s*$/i, "")
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
     .trim();
+
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1)) as T;
+    // Fall through to brace scanning.
+  }
+
+  const start = cleaned.indexOf("{");
+  if (start >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < cleaned.length; i += 1) {
+      const ch = cleaned[i];
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = cleaned.slice(start, i + 1);
+          try {
+            return JSON.parse(candidate) as T;
+          } catch {
+            break;
+          }
+        }
+      }
     }
-    throw new Error("Respons GripHub bukan JSON yang valid.");
+  }
+
+  throw new Error("Respons GripHub bukan JSON yang valid.");
+}
+
+/**
+ * Ask the model for a JSON object and retry once with a stricter instruction if
+ * it replies with prose. `response_format: json_object` is not reliably honoured
+ * by every model behind GripHub, so the prompt does the enforcing and this
+ * wrapper guarantees a retry instead of failing the whole evaluation.
+ */
+export async function gripHubJson<T = unknown>(
+  config: GripHubConfig,
+  messages: { role: "system" | "user"; content: string }[],
+  options: { signal?: AbortSignal } = {},
+): Promise<T> {
+  const first = await gripHubChat(config, messages, { json: true, signal: options.signal });
+  try {
+    return parseJsonReply<T>(first);
+  } catch {
+    const retryMessages = [
+      ...messages,
+      { role: "assistant" as const, content: first.slice(0, 500) },
+      {
+        role: "user" as const,
+        content:
+          "Jawaban di atas tidak valid JSON. Balas ULANG HANYA dengan objek JSON valid, " +
+          "tanpa penjelasan, tanpa pagar kode, tanpa teks lain sebelum atau sesudah JSON.",
+      },
+    ];
+    const second = await gripHubChat(config, retryMessages, { json: true, signal: options.signal });
+    return parseJsonReply<T>(second);
   }
 }

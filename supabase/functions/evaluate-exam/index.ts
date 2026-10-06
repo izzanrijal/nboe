@@ -1,6 +1,6 @@
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
-import { getGripHubConfig, gripHubChat, parseJsonReply } from "../_shared/griphub.ts";
+import { getGripHubConfig, gripHubChat, gripHubJson } from "../_shared/griphub.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -64,15 +64,14 @@ Balas HANYA dengan satu objek JSON (tanpa pagar kode, tanpa teks lain) dengan sk
 ${JSON.stringify(scoreSchema)}`;
     const userContent = buildUserContent(clinicalCase, rubricData, answerKey, questions, transcript);
     return examStream(async () => {
-      const raw = await gripHubChat(
+      const scoreReport: any = await gripHubJson(
         gripHub,
         [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        { json: true, signal: req.signal },
+        { signal: req.signal },
       );
-      const scoreReport: any = parseJsonReply(raw);
       if (!scoreReport || typeof scoreReport !== "object") throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
       const assessed = Array.isArray(scoreReport.items) ? scoreReport.items : [];
       scoreReport.items = (rubricData.enabled ? rubricData.items : assessed).map((item: any, index: number) => {
