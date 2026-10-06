@@ -1,6 +1,6 @@
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
-import { getGripHubConfig, gripHubChat, gripHubJson } from "../_shared/griphub.ts";
+import { getOpenAIConfig, openAIChat, openAIJson } from "../_shared/openai.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -13,8 +13,8 @@ Deno.serve(async (req) => {
     const context = await getExamAiContext(req, result_id);
     if (context.response) return context.response;
     const { admin: supabase, result } = context;
-    const gripHub = getGripHubConfig();
-    if (!gripHub) return json({ error: "Konfigurasi GripHub belum tersedia. Setel GRIPHUB_API_KEY di Supabase secrets." }, 500);
+    const openai = getOpenAIConfig();
+    if (!openai) return json({ error: "Konfigurasi OpenAI belum tersedia. Setel OPENAI_API_KEY di Supabase secrets." }, 500);
     const { data: sessionData } = await supabase.from("exam_sessions")
       .select("case_id, session_start_time").eq("id", result.session_id).single();
     if (!sessionData) return json({ error: "Sesi ujian tidak ditemukan." }, 404);
@@ -64,8 +64,8 @@ Balas HANYA dengan satu objek JSON (tanpa pagar kode, tanpa teks lain) dengan sk
 ${JSON.stringify(scoreSchema)}`;
     const userContent = buildUserContent(clinicalCase, rubricData, answerKey, questions, transcript);
     return examStream(async () => {
-      const scoreReport: any = await gripHubJson(
-        gripHub,
+      const scoreReport: any = await openAIJson(
+        openai,
         [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
