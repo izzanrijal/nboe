@@ -1,6 +1,6 @@
 import { getExamAiContext, json, corsHeaders, parseRubric } from "../_shared/exam-ai-access.ts";
-import { createResponsesCall } from "../_shared/responses.ts";
 import { examStream } from "../_shared/exam-stream.ts";
+import { getGripHubConfig, gripHubChat } from "../_shared/griphub.ts";
 const WPM = 130;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -14,8 +14,8 @@ Deno.serve(async (req) => {
     const { admin, result, session } = context;
     const report = result.ai_score_report && typeof result.ai_score_report === "object" && !Array.isArray(result.ai_score_report) ? result.ai_score_report : {};
     if (report.modelAnswer && !force) return json({ modelAnswer: report.modelAnswer });
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) return json({ error: "Konfigurasi Lovable AI belum tersedia." }, 500);
+    const gripHub = getGripHubConfig();
+    if (!gripHub) return json({ error: "Konfigurasi GripHub belum tersedia. Setel GRIPHUB_API_KEY di Supabase secrets." }, 500);
     const [{ data: cc, error: caseError }, { data: keys, error: keyError }] = await Promise.all([
       admin.from("clinical_cases").select("title, initial_prompt, questions_text, time_limit_seconds").eq("id", session.case_id).single(),
       admin.from("case_answer_keys").select("answer_key_text, checklist_rubric").eq("case_id", session.case_id).maybeSingle(),
@@ -46,8 +46,11 @@ ${keys?.answer_key_text ? `KUNCI JAWABAN:\n${keys.answer_key_text}\n` : ""}
 ${rubric.length ? `RUBRIK:\n${rubric.map((r, i) => `${i + 1}. ${r.text} (${r.points} poin${r.isCritical ? ", KRITIS" : ""})`).join("\n")}` : ""}`;
 
     return examStream(async () => {
-      const call = createResponsesCall(req, { baseURL: "https://ai.gateway.lovable.dev/v1", apiKey, model: "openai/gpt-6-astra" }, [{ role: "user", content: prompt }]);
-      const text = (await call.result.text).trim();
+      const text = await gripHubChat(
+        gripHub,
+        [{ role: "user", content: prompt }],
+        { signal: req.signal },
+      );
       if (!text) throw new Error("AI tidak menghasilkan jawaban contoh.");
       const modelAnswer = { text, wordCount: text.split(/\s+/).filter(Boolean).length, timeLimitSeconds: seconds, wpm: WPM, generatedAt: new Date().toISOString() };
       const { data: latest } = await admin.from("exam_results").select("ai_score_report").eq("id", result_id).single();

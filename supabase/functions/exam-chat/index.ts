@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getGripHubConfig, gripHubChat } from "../_shared/griphub.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,7 +24,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const gripHub = getGripHubConfig();
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -110,7 +111,7 @@ ATURAN:
       if (assetMatch) break;
     }
 
-    if (!lovableApiKey) {
+    if (!gripHub) {
       const reply = assetMatch
         ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
         : "Pemeriksaan tersebut tidak tersedia dalam skenario ini.";
@@ -120,36 +121,29 @@ ATURAN:
       );
     }
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
+    let aiReply: string;
+    try {
+      aiReply = await gripHubChat(
+        gripHub,
+        [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
         ],
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429 || aiResponse.status === 402) {
-        const reply = assetMatch
-          ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
-          : "Pemeriksaan tersebut tidak tersedia.";
-        return new Response(
-          JSON.stringify({ reply, asset_match: assetMatch }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error(`AI gateway error: ${aiResponse.status}`);
+        { signal: req.signal },
+      );
+    } catch (error) {
+      // A flaky exam-chat provider must not break the candidate's flow: fall
+      // back to the keyword-matched asset reply instead of failing the request.
+      console.error("exam-chat GripHub error:", error);
+      const reply = assetMatch
+        ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
+        : "Pemeriksaan tersebut tidak tersedia dalam skenario ini.";
+      return new Response(
+        JSON.stringify({ reply, asset_match: assetMatch }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-
-    const aiData = await aiResponse.json();
-    const reply = aiData.choices?.[0]?.message?.content || "Maaf, tidak dapat memproses.";
+    const reply = aiReply;
 
     return new Response(
       JSON.stringify({ reply, asset_match: assetMatch }),

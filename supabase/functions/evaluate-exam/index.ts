@@ -1,7 +1,6 @@
-import { Output, jsonSchema } from "npm:ai@6";
-import { createResponsesCall } from "../_shared/responses.ts";
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
+import { getGripHubConfig, gripHubChat, parseJsonReply } from "../_shared/griphub.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -14,8 +13,8 @@ Deno.serve(async (req) => {
     const context = await getExamAiContext(req, result_id);
     if (context.response) return context.response;
     const { admin: supabase, result } = context;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) return json({ error: "Konfigurasi Lovable AI belum tersedia." }, 500);
+    const gripHub = getGripHubConfig();
+    if (!gripHub) return json({ error: "Konfigurasi GripHub belum tersedia. Setel GRIPHUB_API_KEY di Supabase secrets." }, 500);
     const { data: sessionData } = await supabase.from("exam_sessions")
       .select("case_id, session_start_time").eq("id", result.session_id).single();
     if (!sessionData) return json({ error: "Sesi ujian tidak ditemukan." }, 404);
@@ -59,12 +58,22 @@ Deno.serve(async (req) => {
     const answerKey = answerKeys?.answer_key_text || "";
     const questions = clinicalCase?.questions_text || "";
     const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions) + `
-Untuk setiap item PASS, evidenceQuote WAJIB berupa kutipan persis dari transkrip, cukup lengkap untuk membuktikan kriteria terpenuhi secara klinis. Sinonim boleh diterima, tetapi bukan hanya satu kata umum. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.`;
+Untuk setiap item PASS, evidenceQuote WAJIB berupa kutipan persis dari transkrip, cukup lengkap untuk membuktikan kriteria terpenuhi secara klinis. Sinonim boleh diterima, tetapi bukan hanya satu kata umum. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.
+
+Balas HANYA dengan satu objek JSON (tanpa pagar kode, tanpa teks lain) dengan skema:
+${JSON.stringify(scoreSchema)}`;
     const userContent = buildUserContent(clinicalCase, rubricData, answerKey, questions, transcript);
     return examStream(async () => {
-      const call = createResponsesCall(req, { baseURL: "https://ai.gateway.lovable.dev/v1", apiKey: lovableApiKey, model: "openai/gpt-6-astra" }, [{ role: "user", content: userContent }], systemPrompt, Output.object({ schema: jsonSchema(scoreSchema) }));
-      const scoreReport: any = await call.result.output;
-      if (!scoreReport) throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
+      const raw = await gripHubChat(
+        gripHub,
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        { json: true, signal: req.signal },
+      );
+      const scoreReport: any = parseJsonReply(raw);
+      if (!scoreReport || typeof scoreReport !== "object") throw new Error("AI tidak menghasilkan laporan penilaian. Hasil lama tetap tersimpan.");
       const assessed = Array.isArray(scoreReport.items) ? scoreReport.items : [];
       scoreReport.items = (rubricData.enabled ? rubricData.items : assessed).map((item: any, index: number) => {
         const evaluated = assessed[index];
