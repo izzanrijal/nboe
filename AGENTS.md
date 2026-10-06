@@ -1,0 +1,4 @@
+- Keep exam AI authorization and rubric normalization in shared server-only helpers so evaluation and ideal answers enforce the same access rules.
+- Use streamed exam AI responses with a shared browser reader so long generation remains connected and safe errors reach every caller.
+- Preserve direct OpenAI transcription until the owner explicitly requests a provider migration; report its billing errors separately.
+- Persist exact rubric evidence quotes in grading reports; transcript highlighting must not infer correctness from isolated keyword overlap.
