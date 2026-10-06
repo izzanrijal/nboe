@@ -210,18 +210,22 @@ const CandidateResultsList = () => {
                       <h4 className="text-sm font-normal mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
                         {parsed.items.map((item, idx) => {
-                          const unanswered = !item.passed;
+                          // The highlight is the source of truth: a rubric line is
+                          // only "passed" when the transcript actually mentions it.
+                          const match = rubricMatches[idx];
+                          const passed = match ? match.passed : item.passed;
+                          const mentioned = passed;
                           return (
-                            <div key={idx} className={`flex items-center gap-2 text-sm ${unanswered ? "italic text-muted-foreground" : ""}`}>
-                              <Badge variant={item.passed ? "default" : "destructive"} className="text-xs">
-                                {item.passed ? "PASS" : "FAIL"}
+                            <div key={idx} className={`flex items-center gap-2 text-sm ${mentioned ? "" : "italic text-muted-foreground"}`}>
+                              <Badge variant={passed ? "default" : "destructive"} className="text-xs">
+                                {passed ? "PASS" : "FAIL"}
                               </Badge>
                               {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
-                              <span className={`flex-1 ${unanswered ? "font-bold italic" : "font-normal"}`}>{item.item}</span>
-                              {unanswered && <Badge variant="outline" className="text-[10px] font-normal">belum terpenuhi</Badge>}
+                              <span className={`flex-1 font-normal ${mentioned ? "" : "font-bold italic"}`}>{item.item}</span>
+                              {!mentioned && <Badge variant="outline" className="text-[10px] font-normal">belum disebut</Badge>}
                               {item.points != null && (
                                 <span className="text-xs font-mono text-muted-foreground">
-                                  {item.passed ? item.points : 0}/{item.points} pts
+                                  {passed ? item.points : 0}/{item.points} pts
                                 </span>
                               )}
                               {item.comment && <span className="text-muted-foreground text-xs">— {item.comment}</span>}
