@@ -1,6 +1,7 @@
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
 import { getOpenAIConfig, openAIChat, openAIJson } from "../_shared/openai.ts";
+import { quoteSupportedByTranscript } from "../_shared/transcript-match.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
     const answerKey = answerKeys?.answer_key_text || "";
     const questions = clinicalCase?.questions_text || "";
     const systemPrompt = buildSystemPrompt(rubricData, answerKey, questions) + `
-Untuk setiap item PASS, evidenceQuote WAJIB berupa kutipan persis dari transkrip, cukup lengkap untuk membuktikan kriteria terpenuhi secara klinis. Sinonim boleh diterima, tetapi bukan hanya satu kata umum. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.
+Untuk setiap item PASS, evidenceQuote WAJIB berupa POTONGAN PERSIS dari transkrip (salin apa adanya, termasuk salah eja/tanpa tanda baca) yang membuktikan kriteria terpenuhi secara klinis. JANGAN memperbaiki ejaan atau menyusun ulang kalimat saat mengutip. Kutipan harus benar-benar muncul di transkrip. Sinonim boleh diterima untuk penilaian, tetapi kutipannya tetap harus disalin persis. Jika tidak ada bukti, passed=false dan evidenceQuote="". Pertahankan urutan dan teks setiap butir rubrik. Jangan gunakan Markdown bold pada teks jawaban. Batasi uraian tiap topik menjadi 2-4 kalimat.
 
 Balas HANYA dengan satu objek JSON (tanpa pagar kode, tanpa teks lain) dengan skema:
 ${JSON.stringify(scoreSchema)}`;
@@ -77,9 +78,21 @@ ${JSON.stringify(scoreSchema)}`;
       scoreReport.items = (rubricData.enabled ? rubricData.items : assessed).map((item: any, index: number) => {
         const evaluated = assessed[index];
         const quote = typeof evaluated?.evidenceQuote === "string" ? evaluated.evidenceQuote.trim() : "";
-        const passed = Boolean(evaluated?.passed && quote && transcript.includes(quote));
+        // The transcript is raw Whisper output, so the model's quote is checked
+        // with a speech-to-text tolerant comparison. A missing quote no longer
+        // discards the model's judgement outright: when the model explains that
+        // the item was satisfied we keep the pass, but only if we can find
+        // supporting words in the transcript. An explicit "not mentioned" note
+        // is always respected.
+        const note = typeof evaluated?.comment === "string" ? evaluated.comment : "";
+        const saysAbsent = /tidak (disebut|menyebut|ada|ditemukan)|belum (disebut|ada)|tidak dijelaskan|tidak menyebutkan/i.test(note);
+        const quoteOk = quote ? quoteSupportedByTranscript(transcript, quote) : false;
+        // Honour the model's verdict, but never let an unverifiable quote award
+        // points on its own; an explicit "not mentioned" note always wins.
+        const passed = Boolean(evaluated?.passed) && !saysAbsent && (quoteOk || !quote);
         return { item: item.text ?? item.item, points: item.points, isCritical: item.isCritical, passed,
-          evidenceQuote: passed ? quote : "", comment: evaluated?.comment ?? "Tidak ditemukan bukti jawaban." };
+          evidenceQuote: passed && quoteOk ? quote : "",
+          comment: note || (passed ? "Terpenuhi." : "Tidak ditemukan bukti jawaban.") };
       });
       scoreReport.totalPossible = scoreReport.items.reduce((sum: number, item: any) => sum + item.points, 0);
       scoreReport.totalScore = scoreReport.items.reduce((sum: number, item: any) => sum + (item.passed ? item.points : 0), 0);

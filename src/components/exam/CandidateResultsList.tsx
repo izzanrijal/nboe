@@ -189,25 +189,29 @@ const CandidateResultsList = () => {
                       <h4 className="text-sm font-normal mb-2">Rubrik Penilaian</h4>
                       <div className="space-y-1">
                         {parsed.items.map((item, idx) => {
-                          // Grading verdict comes from the evaluation report. The
-                          // transcript is raw speech-to-text, so we do not try to
-                          // re-derive passes by string-matching it.
-                          const passed = item.passed;
-                          const mentioned = passed;
+                          // Single source of truth: the evaluation report. The
+                          // label, the badge and the points all read the same
+                          // `passed` flag, so the UI can never show "disebut"
+                          // while withholding the point.
+                          const passed = item.passed === true;
+                          const hasEvidence = Boolean(item.evidenceQuote);
+                          const reason = passed
+                            ? (hasEvidence ? `Kutipan: "${item.evidenceQuote}"` : "Terpenuhi.")
+                            : (item.comment || "Tidak ditemukan bukti jawaban.");
                           return (
-                            <div key={idx} className={`flex items-start gap-2 text-sm ${mentioned ? "" : "italic text-muted-foreground"}`}>
+                            <div key={idx} className={`flex items-start gap-2 text-sm ${passed ? "" : "italic text-muted-foreground"}`}>
                               <Badge variant={passed ? "default" : "destructive"} className="text-xs shrink-0">
                                 {passed ? "PASS" : "FAIL"}
                               </Badge>
                               {item.isCritical && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
-                              <span className={`flex-1 font-normal ${mentioned ? "" : "font-bold italic"}`}>{item.item}</span>
-                              {!mentioned && <Badge variant="outline" className="text-[10px] font-normal shrink-0">belum disebut</Badge>}
+                              <span className={`flex-1 font-normal ${passed ? "" : "font-bold italic"}`}>{item.item}</span>
+                              {!passed && <Badge variant="outline" className="text-[10px] font-normal shrink-0">belum disebut</Badge>}
                               {item.points != null && (
                                 <span className="text-xs font-mono text-muted-foreground shrink-0">
                                   {passed ? item.points : 0}/{item.points} pts
                                 </span>
                               )}
-                              {item.comment && <span className="text-muted-foreground text-xs">— {item.comment}</span>}
+                              <span className="text-muted-foreground text-xs">{reason}</span>
                             </div>
                           );
                         })}
