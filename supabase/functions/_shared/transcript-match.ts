@@ -119,3 +119,86 @@ export const quoteSupportedByTranscript = (transcript: string, quote: string): b
   // single shared general word cannot pass an item.
   return hits >= Math.max(2, Math.ceil(quoteWords.length * 0.6));
 };
+
+/**
+ * How much of a rubric line's own substance the candidate actually said.
+ *
+ * Rubric lines are often long and multi-part ("HFrEF with LVEF <=35%, NYHA II-III,
+ * optimal GDMT for >=3 months, life expectancy >1 year"). Judging such a line
+ * all-or-nothing silently scores a real partial answer as zero. This splits the
+ * line into segments and reports what fraction the transcript supports, so the
+ * grader can award the half point instead of wiping the item out.
+ *
+ * Returns 0 when nothing meaningful is supported, so it can never invent credit.
+ */
+/**
+ * Clinical anchors inside a rubric segment that actually prove a sub-point:
+ * numbers/UMLs and drug/device/measure terms. Generic connective words are
+ * ignored so a segment is credited only for its medical substance.
+ */
+const CLINICAL_STOP = new Set([
+  "menyebutkan", "menjelaskan", "pertimbangan", "kriteria", "inti", "umumnya",
+  "telah", "mendapat", "memiliki", "dengan", "atau", "serta", "dan", "pada",
+  "pasien", "harus", "dapat", "bila", "yang", "lebih", "dari", "sudah",
+  "sekurang", "kurangnya", "minimal", "optimal", "status", "serta",
+]);
+
+/**
+ * Function-word prefixes ("menyebut…", "menggunakan…", "penggunaan…") carry no
+ * clinical meaning; matching by prefix keeps their inflected forms out of the
+ * anchor set whichever suffix the stemmer left behind.
+ */
+const FUNCTION_PREFIXES = [
+  "menyebut", "menjelas", "mengguna", "pengguna", "mengidentifikasi", "meliputi",
+  "termasuk", "mempertimbang", "pertimbang", "menunjuk", "memberi", "melakuk",
+  "mengetahu", "memahami", "menyampa", "menany", "menilai",
+];
+
+const isFunctionWord = (w: string): boolean =>
+  CLINICAL_STOP.has(w) || FUNCTION_PREFIXES.some((p) => w.startsWith(p));
+
+const anchorWords = (segment: string): string[] =>
+  stemsOf(segment).filter((w) => !isFunctionWord(w) && !isFunctionWord(stem(w)) && w.length >= 3);
+
+/**
+ * Is any clinical anchor of this segment present in the transcript? Anchors are
+ * matched individually (order-free) because a short sub-requirement has no
+ * internal structure to preserve.
+ */
+const segmentSupported = (segment: string, transcriptStems: string[]): boolean => {
+  const anchors = anchorWords(segment);
+  const numbers = (segment.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", "."));
+  const hasNumber = numbers.length > 0;
+  const numberSeen = numbers.some((n) => transcriptStems.includes(n));
+
+  if (anchors.length === 0) return hasNumber && numberSeen;
+
+  const hits = anchors.filter((a) => transcriptStems.some((t) => wordsMatch(a, t))).length;
+  // Numbers/UMLs are strong evidence on their own; otherwise require most of the
+  // segment's substantive words to appear.
+  if (hasNumber && numberSeen && hits >= 1) return true;
+  return hits >= Math.max(1, Math.ceil(anchors.length * 0.6));
+};
+
+export const itemCoverageShare = (transcript: string, rubricLine: string): number => {
+  const line = (rubricLine ?? "").trim();
+  if (!line) return 0;
+  const transcriptStems = stemsOf(transcript);
+  if (!transcriptStems.length) return 0;
+
+  const segments = line
+    .split(/[,;:]|\bserta\b|\batau\b|\btermasuk\b|\bmeliputi\b|\bseperti\b|\bumumnya\b/gi)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const substantive = segments.filter((s) => anchorWords(s).length >= 1 || /\d/.test(s));
+  if (!substantive.length) {
+    return quoteSupportedByTranscript(transcript, line) ? 1 : 0;
+  }
+  if (substantive.length === 1) {
+    return segmentSupported(substantive[0], transcriptStems) ? 1 : 0;
+  }
+
+  const supported = substantive.filter((s) => segmentSupported(s, transcriptStems));
+  return supported.length / substantive.length;
+};

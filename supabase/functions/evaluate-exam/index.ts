@@ -1,7 +1,7 @@
 import { getExamAiContext, json, corsHeaders, parseRubric, safeUpstreamError } from "../_shared/exam-ai-access.ts";
 import { examStream } from "../_shared/exam-stream.ts";
 import { getOpenAIConfig, openAIChat, openAIJson } from "../_shared/openai.ts";
-import { quoteSupportedByTranscript } from "../_shared/transcript-match.ts";
+import { itemCoverageShare, quoteSupportedByTranscript } from "../_shared/transcript-match.ts";
 import { scoreSchema } from "./score-schema.ts";
 
 interface RubricItem { text: string; points: number; isCritical: boolean; }
@@ -67,10 +67,23 @@ Passed = true hanya bila coverage "full" atau "partial" (coverage "none" -> pass
 Sesuaikan "passed" dengan "coverage": full/partial => true, none => false.
 
 PENILAIAN BUTIR (tiap butir maksimal 2 poin):
-- "full"    -> disebutkan lengkap => dapat 2 poin
+- "full"    -> disebutkan lengkap (SEMUA sub-syarat butir terpenuhi) => dapat 2 poin
 - "partial" -> disebutkan namun tidak lengkap => dapat 1 poin
 - "none"    -> tidak disebut => 0 poin
 Isi field "points" dengan poin yang DIDAPAT (2, 1, atau 0), bukan poin maksimal. Butir yang hanya "partial" TIDAK boleh diberi 2 poin.
+
+ATURAN PENTING — BUTIR YANG MEMUAT BEBERAPA SUB-SYARAT:
+Satu butir rubrik sering memuat 3-6 syarat yang dipisahkan tanda koma, "serta", "atau",
+"termasuk", atau titik dua. Butir seperti itu BUKAN all-or-nothing. Nilai berdasarkan
+BERAPA BANYAK sub-syarat yang benar-benar disebut:
+- Semua sub-syarat disebut                   -> "full"    (2 poin)
+- SEBAGIAN sub-syarat disebut (>=1 tapi <semua) -> "partial" (1 poin)
+- Tidak satu pun sub-syarat disebut          -> "none"    (0 poin)
+JANGAN memberi "none" hanya karena satu sub-syarat terlewat padahal peserta sudah
+menyebut sub-syarat lain yang jelas. Contoh: rubrik "HFrEF dengan LVEF <=35%, NYHA II-III,
+GDMT optimal >=3 bulan, harapan hidup >1 tahun" — peserta yang menyebut "LVEF <35% dan
+GDMT optimal minimal 3 bulan" WAJIB mendapat "partial" (1 poin), bukan "none", karena
+2 dari 4 sub-syarat sudah disebut dengan benar.
 
 Setiap butir rubrik WAJIB muncul di "items" dengan urutan dan teks yang persis sama seperti rubrik. Jangan menambah atau mengurangi butir.
 
@@ -104,8 +117,19 @@ ${JSON.stringify(scoreSchema)}`;
         const note = typeof evaluated?.comment === "string" ? evaluated.comment : "";
         // The transcript is raw Whisper output, so the model's quote is verified
         // with a speech-to-text tolerant comparison rather than an exact match.
+        const rawCoverageInitial = String(evaluated?.coverage ?? "").toLowerCase();
         const quoteOk = quote ? quoteSupportedByTranscript(transcript, quote) : false;
-        const saysAbsent = /tidak (disebut|menyebut|ada|ditemukan)|belum (disebut|ada)|tidak dijelaskan|tidak menyebutkan/i.test(note);
+        // A note like "menyebut LVEF <35%, tetapi tidak menyebut NYHA" names a
+        // PARTIAL mention; treating that as whole-line absence erased the half
+        // point the candidate had earned. So only accept the "absent" verdict
+        // when the note does not ALSO credit something ("tetapi", "namun",
+        // "hanya", "sedangkan", "walaupun"), and never when the model's own
+        // coverage field says otherwise.
+        const notesPartialCredit = /\b(tetapi|tapi|namun|hanya|sedangkan|walaupun|walau|meski|meskipun|belum lengkap|kurang lengkap)\b/i.test(note);
+        const saysAbsent =
+          !notesPartialCredit &&
+          rawCoverageInitial === "none" &&
+          /tidak (disebut|menyebut|ada|ditemukan)|belum (disebut|ada)|tidak dijelaskan|tidak menyebutkan/i.test(note);
 
         // The MODEL's "coverage" is the primary judgment: it reads the clinical
         // meaning, which is what matters. The transcript check is only a guard
@@ -129,6 +153,15 @@ ${JSON.stringify(scoreSchema)}`;
           coverage = "partial";
         } else {
           coverage = "none";
+        }
+
+        // Safeguard against an all-or-nothing verdict on a many-part rubric
+        // line: when the candidate demonstrably said a MEANINGFUL SHARE of the
+        // line's own key phrases, a "none" is wrong — the model meant "partial".
+        // This is what silently zeroed real answers (e.g. "LVEF <35% + GDMT
+        // minimal 3 bulan" scored 0 on a line demanding exactly those criteria).
+        if (coverage === "none" && !saysAbsent && itemCoverageShare(transcript, item.text ?? item.item) > 0) {
+          coverage = "partial";
         }
 
         // A quote that we CAN verify but that the model called absent means the
