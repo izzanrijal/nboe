@@ -3,36 +3,60 @@ import { findRubricMatches, buildHighlightSegments, findUnmentionedItems } from 
 
 const ANSWER = `Pertanyaan 1:
 
-ARNI adalah Angiotensin Receptor-Neprilysin Inhibitor. ARNI tidak dikombinasi dengan ACE-inhibitor karena keduanya meningkatkan bradikinin.`;
+ARNI adalah Angiotensin Receptor-Neprilysin Inhibitor. ARNI tidak dikombinasi dengan ACE-inhibitor karena keduanya meningkatkan bradikinin. Efek anti-inflamasi statin menurunkan CRP dan IL-6.`;
 
-describe("highlight targets the AI model answer", () => {
-  it("highlights a rubric phrase the answer contains", () => {
+describe("highlight is driven by the candidate's grading, not the AI answer text", () => {
+  it("marks a line the candidate missed, even though the ideal answer contains it", () => {
     const matches = findRubricMatches(ANSWER, [
-      { item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor." },
+      { item: "Menyebutkan: efek anti-inflamasi statin menurunkan CRP dan IL-6.", coverage: "none" },
     ]);
     const segments = buildHighlightSegments(ANSWER, matches);
+    // The phrase IS in the model answer (so it can be located)...
     expect(matches[0].matched).toBe(true);
-    expect(matches[0].matchedText.toLowerCase()).toContain("angiotensin");
+    // ...but the candidate never said it, so it is a gap and gets highlighted.
+    expect(matches[0].coveredByCandidate).toBe(false);
     expect(segments.some((s) => s.highlighted)).toBe(true);
+    expect(findUnmentionedItems(matches)).toHaveLength(1);
   });
 
-  it("reports rubric lines the answer does not mention", () => {
+  it("does not highlight a line the candidate already covered", () => {
     const matches = findRubricMatches(ANSWER, [
-      { item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor." },
-      { item: "Menyebutkan: washout period 36 jam sebelum beralih ke ARNI." },
+      { item: "Menyebutkan: ARNI = Angiotensin Receptor-Neprilysin Inhibitor.", coverage: "full" },
     ]);
-    const missing = findUnmentionedItems(matches);
-    expect(missing).toHaveLength(1);
-    expect(missing[0].item.item).toContain("washout");
+    expect(matches[0].matched).toBe(true);
+    expect(matches[0].coveredByCandidate).toBe(true);
+    // Nothing to learn here, so nothing is highlighted and nothing is listed.
+    expect(buildHighlightSegments(ANSWER, matches).some((s) => s.highlighted)).toBe(false);
+    expect(findUnmentionedItems(matches)).toHaveLength(0);
   });
 
-  it("derives passed from presence in the answer, not a supplied verdict", () => {
+  it("trusts the candidate verdict instead of inferring it from the answer text", () => {
+    // The regression that caused the hallucination report: the model answer
+    // contains IL-6/CRP, so text matching alone claimed the candidate said them.
     const matches = findRubricMatches(ANSWER, [
-      // Claim passed=true but the phrase is absent -> must stay unmentioned.
-      { item: "Menyebutkan: dosis sacubitril valsartan 97/103 mg dua kali sehari.", passed: true },
+      { item: "Menyebutkan: penurunan CRP dan IL-6.", coverage: "none" },
+      { item: "Menyebutkan: dosis sacubitril valsartan 97/103 mg.", coverage: "full", passed: true },
     ]);
-    expect(matches[0].passed).toBe(false);
-    expect(matches[0].matched).toBe(false);
+    expect(matches[0].coveredByCandidate).toBe(false);
+    expect(findUnmentionedItems(matches).map((m) => m.item.item)).toEqual([
+      "Menyebutkan: penurunan CRP dan IL-6.",
+    ]);
+    expect(matches[1].coveredByCandidate).toBe(true);
+  });
+
+  it("treats a partial mention as covered, so it is not shown as a gap", () => {
+    const matches = findRubricMatches(ANSWER, [
+      { item: "Menyebutkan: efek anti-inflamasi statin menurunkan CRP dan IL-6.", coverage: "partial" },
+    ]);
+    expect(matches[0].coveredByCandidate).toBe(true);
+    expect(findUnmentionedItems(matches)).toHaveLength(0);
+  });
+
+  it("falls back to the report's passed flag when coverage is absent", () => {
+    const missed = findRubricMatches(ANSWER, [{ item: "Menyebutkan: bradikinin.", passed: false }]);
+    expect(missed[0].coveredByCandidate).toBe(false);
+    const covered = findRubricMatches(ANSWER, [{ item: "Menyebutkan: bradikinin.", passed: true }]);
+    expect(covered[0].coveredByCandidate).toBe(true);
   });
 });
 
