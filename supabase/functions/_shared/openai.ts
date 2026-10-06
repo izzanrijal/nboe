@@ -1,44 +1,42 @@
 /**
- * GripHub (DeepSeek) provider for the exam AI features.
+ * OpenAI provider for the exam AI features.
  *
- * GripHub exposes an OpenAI-compatible surface:
- *   base_url = https://griphubrouter.web.id/v1
+ * Uses the project's existing OPENAI_API_KEY (the same key already used for
+ * Whisper transcription) against the standard OpenAI API:
+ *   base_url = https://api.openai.com/v1
  *   POST /chat/completions   with  Authorization: Bearer <key>
  *
- * We keep a single place for the transport so `generate-model-answer` and
- * `evaluate-exam` can share it. Structured grading output is requested with
- * `response_format: json_object` (OpenAI-compatible), then validated by the
- * caller against the rubric.
+ * This replaced the GripHub/DeepSeek integration, which was reverted because of
+ * an unfair floor price. Keep the transport in one place so
+ * `generate-model-answer` and `evaluate-exam` share it.
  */
 
-export const GRIPHUB_DEFAULT_BASE_URL = "https://griphubrouter.web.id/v1";
-export const GRIPHUB_DEFAULT_MODEL = "deepseek-v4.1-flash";
+export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
+export const OPENAI_DEFAULT_MODEL = "gpt-5.6-luna";
 
-export interface GripHubConfig {
+export interface OpenAIConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
 /**
- * Read GripHub settings from edge-function secrets so the operator can change
- * them without a redeploy. `GRIPHUB_MODEL` is required in practice — the
- * default is only a fallback so the function fails loudly instead of silently
- * calling a non-existent model.
+ * Read OpenAI settings from edge-function secrets so the operator can change
+ * them without a redeploy. `OPENAI_MODEL` falls back to `gpt-5.6-luna`.
  */
-export function getGripHubConfig(): GripHubConfig | null {
-  const apiKey = Deno.env.get("GRIPHUB_API_KEY");
+export function getOpenAIConfig(): OpenAIConfig | null {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) return null;
-  const baseUrl = (Deno.env.get("GRIPHUB_BASE_URL") || GRIPHUB_DEFAULT_BASE_URL).replace(/\/+$/, "");
-  const model = Deno.env.get("GRIPHUB_MODEL") || GRIPHUB_DEFAULT_MODEL;
+  const baseUrl = (Deno.env.get("OPENAI_BASE_URL") || OPENAI_DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const model = Deno.env.get("OPENAI_MODEL") || OPENAI_DEFAULT_MODEL;
   return { apiKey, baseUrl, model };
 }
 
-export class GripHubError extends Error {
+export class OpenAIError extends Error {
   status: number;
   constructor(message: string, status: number) {
     super(message);
-    this.name = "GripHubError";
+    this.name = "OpenAIError";
     this.status = status;
   }
 }
@@ -48,13 +46,17 @@ const MESSAGE_MAX_ATTEMPTS = 3;
 const isTransientStatus = (status: number) => status === 429 || status >= 500;
 
 /**
- * Ask GripHub for a completion. Retries only transient failures (network, 429,
- * 5xx) so a flaky gateway does not lose an evaluation.
+ * Ask OpenAI for a completion. Retries only transient failures (network, 429,
+ * 5xx) so a flaky moment does not lose an evaluation.
+ *
+ * Note: reasoning models (the gpt-5.x family) spend the output budget on
+ * hidden reasoning first, so `max_completion_tokens` is deliberately generous
+ * and `temperature` is omitted (unsupported by some reasoning models).
  */
-export async function gripHubChat(
-  config: GripHubConfig,
+export async function openAIChat(
+  config: OpenAIConfig,
   messages: { role: "system" | "user"; content: string }[],
-  options: { json?: boolean; signal?: AbortSignal; maxTokens?: number } = {},
+  options: { json?: boolean; signal?: AbortSignal; maxCompletionTokens?: number } = {},
 ): Promise<string> {
   let lastError: unknown;
 
@@ -69,38 +71,45 @@ export async function gripHubChat(
         body: JSON.stringify({
           model: config.model,
           messages,
-          temperature: 0.2,
-          ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
+          max_completion_tokens: options.maxCompletionTokens ?? 16000,
           ...(options.json ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: options.signal,
       });
 
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        const detail = body.slice(0, 500);
+        const raw = await response.text().catch(() => "");
+        const detail = raw.slice(0, 500);
         if (isTransientStatus(response.status) && attempt < MESSAGE_MAX_ATTEMPTS) {
-          lastError = new GripHubError(`GripHub HTTP ${response.status}: ${detail}`, response.status);
+          lastError = new OpenAIError(`OpenAI HTTP ${response.status}: ${detail}`, response.status);
           await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
           continue;
         }
-        throw new GripHubError(
+        throw new OpenAIError(
           response.status === 401
-            ? "Kunci API GripHub tidak valid atau belum disetel."
-            : `GripHub gagal (HTTP ${response.status}): ${detail || "tanpa detail"}`,
+            ? "Kunci API OpenAI tidak valid atau belum disetel."
+            : response.status === 404
+              ? `Model OpenAI "${config.model}" tidak tersedia untuk kunci ini.`
+              : `OpenAI gagal (HTTP ${response.status}): ${detail || "tanpa detail"}`,
           response.status,
         );
       }
 
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
+      const choice = data?.choices?.[0];
+      const content = choice?.message?.content;
       if (typeof content !== "string" || !content.trim()) {
-        throw new GripHubError("GripHub tidak menghasilkan output.", 502);
+        // Reasoning models can return an empty string when the output budget is
+        // exhausted by reasoning; surface that instead of a generic failure.
+        if (choice?.finish_reason === "length") {
+          throw new OpenAIError("Model kehabisan token sebelum menulis jawaban. Coba lagi.", 502);
+        }
+        throw new OpenAIError("OpenAI tidak menghasilkan output.", 502);
       }
       return content.trim();
     } catch (error) {
       lastError = error;
-      const retryable = !(error instanceof GripHubError) || isTransientStatus(error.status);
+      const retryable = !(error instanceof OpenAIError) || isTransientStatus(error.status);
       if (retryable && attempt < MESSAGE_MAX_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
         continue;
@@ -109,16 +118,13 @@ export async function gripHubChat(
     }
   }
 
-  throw lastError instanceof Error ? lastError : new GripHubError("GripHub gagal.", 502);
+  throw lastError instanceof Error ? lastError : new OpenAIError("OpenAI gagal.", 502);
 }
 
 /**
  * Parse a JSON object out of a model reply, tolerating ```json fences and
- * leading/trailing prose that some models add despite instructions.
- *
- * DeepSeek on GripHub sometimes ignores `response_format: json_object` and
- * answers in prose with an explanation before/after the JSON, so we scan for
- * the first balanced object rather than trusting the response to be pure JSON.
+ * leading/trailing prose. Scans for the first balanced object (string- and
+ * escape-aware) rather than trusting the reply to be pure JSON.
  */
 export function parseJsonReply<T = unknown>(raw: string): T {
   const cleaned = raw
@@ -158,21 +164,19 @@ export function parseJsonReply<T = unknown>(raw: string): T {
     }
   }
 
-  throw new Error("Respons GripHub bukan JSON yang valid.");
+  throw new Error("Respons OpenAI bukan JSON yang valid.");
 }
 
 /**
  * Ask the model for a JSON object and retry once with a stricter instruction if
- * it replies with prose. `response_format: json_object` is not reliably honoured
- * by every model behind GripHub, so the prompt does the enforcing and this
- * wrapper guarantees a retry instead of failing the whole evaluation.
+ * it replies with prose.
  */
-export async function gripHubJson<T = unknown>(
-  config: GripHubConfig,
+export async function openAIJson<T = unknown>(
+  config: OpenAIConfig,
   messages: { role: "system" | "user"; content: string }[],
   options: { signal?: AbortSignal } = {},
 ): Promise<T> {
-  const first = await gripHubChat(config, messages, { json: true, signal: options.signal });
+  const first = await openAIChat(config, messages, { json: true, signal: options.signal });
   try {
     return parseJsonReply<T>(first);
   } catch {
@@ -186,7 +190,7 @@ export async function gripHubJson<T = unknown>(
           "tanpa penjelasan, tanpa pagar kode, tanpa teks lain sebelum atau sesudah JSON.",
       },
     ];
-    const second = await gripHubChat(config, retryMessages, { json: true, signal: options.signal });
+    const second = await openAIChat(config, retryMessages, { json: true, signal: options.signal });
     return parseJsonReply<T>(second);
   }
 }

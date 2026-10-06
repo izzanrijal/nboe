@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getGripHubConfig, gripHubChat } from "../_shared/griphub.ts";
+import { getOpenAIConfig, openAIChat } from "../_shared/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,7 +24,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const gripHub = getGripHubConfig();
+    const openai = getOpenAIConfig();
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -111,7 +111,7 @@ ATURAN:
       if (assetMatch) break;
     }
 
-    if (!gripHub) {
+    if (!openai) {
       const reply = assetMatch
         ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
         : "Pemeriksaan tersebut tidak tersedia dalam skenario ini.";
@@ -123,8 +123,8 @@ ATURAN:
 
     let aiReply: string;
     try {
-      aiReply = await gripHubChat(
-        gripHub,
+      aiReply = await openAIChat(
+        openai,
         [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
@@ -132,9 +132,9 @@ ATURAN:
         { signal: req.signal },
       );
     } catch (error) {
-      // A flaky exam-chat provider must not break the candidate's flow: fall
-      // back to the keyword-matched asset reply instead of failing the request.
-      console.error("exam-chat GripHub error:", error);
+      // A flaky provider must not break the candidate's flow: fall back to the
+      // keyword-matched asset reply instead of failing the request.
+      console.error("exam-chat OpenAI error:", error);
       const reply = assetMatch
         ? `Menampilkan ${assetMatch.asset_type}: ${assetMatch.keyword}`
         : "Pemeriksaan tersebut tidak tersedia dalam skenario ini.";
