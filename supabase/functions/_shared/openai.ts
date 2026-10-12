@@ -55,7 +55,7 @@ const isTransientStatus = (status: number) => status === 429 || status >= 500;
  */
 export async function openAIChat(
   config: OpenAIConfig,
-  messages: { role: "system" | "user"; content: string }[],
+  messages: { role: "system" | "user" | "assistant"; content: string }[],
   options: { json?: boolean; signal?: AbortSignal; maxCompletionTokens?: number; deterministic?: boolean } = {},
 ): Promise<string> {
   let lastError: unknown;
