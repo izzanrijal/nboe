@@ -1,3 +1,6 @@
+- [ ] Padatkan semua skenario/pertanyaan Oral Board tanpa menghilangkan fakta penting.
+- [ ] Pecah dan padatkan semua daftar tilik Oral Board menjadi butir objektif 0–2 poin; sinkronkan kunci penilaian.
+- [ ] Selaraskan validasi penyuntingan rubrik dan verifikasi perubahan.
 - [ ] Perbaiki akses AI peserta berizin dan tampilkan penyebab kegagalan evaluasi.
 - [ ] Highlight kutipan jawaban yang memenuhi rubrik; bold-italic hanya butir yang belum disebut.
 - [ ] Uji evaluasi, jawaban ideal, dan perubahan tampilan.
