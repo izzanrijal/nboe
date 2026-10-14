@@ -4,7 +4,7 @@ export interface RubricQualityItem {
   isCritical: boolean;
 }
 
-export function getRubricQualityError(items: RubricQualityItem[]): string | null {
+export function getRubricQualityError(items: RubricQualityItem[], examMode?: string): string | null {
   // An empty checklist explicitly disables rubric-based grading.
   if (items.length === 0) return null;
 
@@ -13,6 +13,14 @@ export function getRubricQualityError(items: RubricQualityItem[]): string | null
   const dupe = normalized.find((t, idx) => t && normalized.indexOf(t) !== idx);
   if (dupe) {
     return `Rubric contains a duplicate item ("${dupe.slice(0, 60)}"). Every item must be unique.`;
+  }
+
+  if (examMode === "oral_board") {
+    if (items.length > 100) return "Oral Board rubric supports at most 100 unique items.";
+    if (items.some((item) => item.points !== 2)) {
+      return "Every Oral Board rubric item must have a maximum of 2 points (2 full / 1 partial / 0 absent).";
+    }
+    return null;
   }
 
   // Keep rubrics broad and realistic: an oral-exam candidate cannot verbalise

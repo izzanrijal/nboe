@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
+import { getRubricQualityError } from "../case-admin/rubric-validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,12 +28,10 @@ const BodySchema = z.object({
   reading_time_seconds: z.number().int().min(5).max(900).optional(),
   time_limit_seconds: z.number().int().min(30).max(1800).optional(),
   show_results_to_candidate: z.boolean().default(false),
-  initial_prompt: z.string().min(400),
-  questions_text: z.string().min(300),
+  initial_prompt: z.string().min(1),
+  questions_text: z.string().min(1),
   answer_key_text: z.string().min(800),
-  // Rubrik bersifat opsional: bila dikirim harus ≥15 butir utuh (checklist);
-  // bila tidak dikirim / items kosong → soal "tanpa daftar tilik" (rubric_mode=none),
-  // penilaian murni berdasarkan answer key. Kiriman parsial (1–14 butir) ditolak.
+  // Oral Board: butir objektif kecil, max 2; kosong menonaktifkan daftar tilik.
   checklist_rubric: z
     .object({ items: z.array(RubricItem).min(0).max(100) })
     .optional(),
@@ -49,18 +48,18 @@ const SCHEMA_DOC = {
     reading_time_minutes: "number 0.25-15 (or reading_time_seconds 5-900)",
     time_limit_minutes: "number 0.5-30 (or time_limit_seconds 30-1800)",
     show_results_to_candidate: "boolean, default false",
-    initial_prompt: "string >=400 chars; must contain >=3 of RIWAYAT/PEMERIKSAAN/TUGAS/EKG/LAB",
-    questions_text: "string >=300 chars; >=5 numbered tasks; must NOT reveal rubric items",
+    initial_prompt: "Oral Board: skenario singkat berisi fakta klinis penting. Mode lain: >=400 chars, >=3 penanda bagian",
+    questions_text: "Oral Board: >=1 pertanyaan bernomor, singkat, tanpa jawaban. Mode lain: >=300 chars, >=5 tugas",
     answer_key_text: "string >=800 chars; expected candidate verbalisation, numbers, thresholds",
-    checklist_rubric: "{ items: [{ text, points 1-5, isCritical }] } — OPSIONAL. Bila dikirim: 5-7 butir LUAS, >=2 critical, total points >=10 → rubric_mode='checklist'. Bila dikosongkan/tidak dikirim → rubric_mode='none' (tanpa daftar tilik, penilaian berbasis answer key)",
+    checklist_rubric: "OPSIONAL { items: [{ text, points, isCritical }] }: Oral Board 1-100 butir objektif unik, points=2 (lengkap 2 / sebagian 1 / tidak disebut 0), padanan makna diterima; critical hanya inti/keselamatan. Mode lain: 5-7 butir, >=2 critical, total >=10. Kosong -> rubric_mode=none",
     media_notes: "[{ description, category: case_media|examination|additional_info, trigger_keywords: [] }] — informational only, media uploaded manually",
     created_by_email: "optional admin email to own the case",
   },
   quality_gates: [
-    "initial_prompt >= 400 chars and >=3 section markers",
-    "questions_text >= 300 chars and >=5 numbered tasks",
+    "Oral Board: skenario dan pertanyaan sesingkat mungkin tanpa kehilangan fakta penting; >=1 tugas bernomor",
+    "Mode lain: initial_prompt >=400 chars, >=3 penanda; questions_text >=300 chars, >=5 tugas",
     "answer_key_text >= 800 chars",
-    "checklist_rubric OPTIONAL: bila dikirim harus 5-7 butir luas (gabungkan butir rinci), >=2 isCritical:true, total points >=10; bila kosong/tidak dikirim -> rubric_mode=none (tanpa daftar tilik)",
+    "checklist_rubric OPTIONAL: Oral Board memakai butir objektif max 2; kosong -> rubric_mode=none",
     "title must be unique (409 otherwise)",
     "inserted as status=draft (menunggu review admin); source=agent_api",
   ],
@@ -109,15 +108,15 @@ Deno.serve(async (req) => {
   const promptUpper = data.initial_prompt.toUpperCase();
   const markers = ["RIWAYAT", "PEMERIKSAAN", "TUGAS", "EKG", "LAB"];
   const hits = markers.filter((m) => promptUpper.includes(m)).length;
-  if (hits < 3) {
+  if (data.exam_mode !== "oral_board" && (hits < 3 || data.initial_prompt.length < 400)) {
     return json(400, {
       error: "initial_prompt must include at least 3 of: RIWAYAT, PEMERIKSAAN, TUGAS, EKG, Lab",
     });
   }
 
   const numberedTasks = (data.questions_text.match(/(^|\n)\s*\d+\./g) || []).length;
-  if (numberedTasks < 5) {
-    return json(400, { error: "questions_text must contain at least 5 numbered tasks (1., 2., ...)" });
+  if (data.exam_mode === "oral_board" ? numberedTasks < 1 : numberedTasks < 5 || data.questions_text.length < 300) {
+    return json(400, { error: data.exam_mode === "oral_board" ? "At least one numbered task is required" : "questions_text requires >=300 chars and >=5 numbered tasks" });
   }
 
   const items = data.checklist_rubric?.items ?? [];
@@ -136,23 +135,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Rubrik harus RINGKAS dan REALISTIS. Peserta ujian lisan tidak mungkin
-  // mengucapkan 15+ butir rinci dalam batas waktu, sehingga rubrik panjang
-  // membuat hampir semua butir gagal dan peserta kehilangan poin meski
-  // jawabannya wajar. Batasi ke 5-7 butir yang luas namun tetap terukur.
-  if (items.length > 0) {
-    if (items.length < 5 || items.length > 7) {
-      return json(400, {
-        error: `Rubrik harus 5-7 butir luas (got ${items.length}). Gabungkan butir rinci menjadi poin-poin utama; atau kosongkan untuk penilaian tanpa daftar tilik (rubric_mode=none).`,
-      });
-    }
-    if (criticalCount < 2) {
-      return json(400, { error: `Minimal 2 butir rubrik harus isCritical:true (got ${criticalCount})` });
-    }
-    if (totalPoints < 10) {
-      return json(400, { error: `Total poin rubrik harus >= 10 (got ${totalPoints})` });
-    }
-  }
+  const rubricError = getRubricQualityError(items, data.exam_mode);
+  if (rubricError) return json(400, { error: rubricError });
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

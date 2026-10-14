@@ -4,6 +4,18 @@ import { getRubricQualityError } from "../../supabase/functions/case-admin/rubri
 const item = (points = 2, isCritical = true) => ({ points, isCritical });
 
 describe("case-admin focused rubric validation", () => {
+  it("accepts objective Oral Board checklists without arbitrary count or critical minimums", () => {
+    for (const count of [1, 4, 14, 30, 100]) {
+      expect(getRubricQualityError(Array.from({ length: count }, () => item(2, false)), "oral_board")).toBeNull();
+    }
+  });
+
+  it("enforces a 2-point ceiling per Oral Board item", () => {
+    expect(getRubricQualityError([item(3)], "oral_board")).toContain("maximum of 2");
+    expect(getRubricQualityError([item(1)], "oral_board")).toContain("maximum of 2");
+    expect(getRubricQualityError(Array.from({ length: 101 }, () => item()), "oral_board")).toContain("100");
+  });
+
   it("treats an empty rubric as disabling checklist grading", () => {
     expect(getRubricQualityError([])).toBeNull();
   });

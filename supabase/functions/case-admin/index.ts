@@ -56,9 +56,9 @@ const SCHEMA_DOC = {
     time_limit_seconds: "int 30-1800 (atau time_limit_minutes 0.5-30)",
     show_results_to_candidate: "boolean",
     initial_prompt: "string (boleh kosong utk panel_exam murni tanya-jawab; >=400 disarankan utk mode kasus)",
-    questions_text: "string >=20 chars (panel_exam cukup 1 pertanyaan inti; mode kasus sebaiknya >=300 & >=5 nomor)",
+    questions_text: "string >=20 chars; Oral Board: pertanyaan padat tanpa pengulangan skenario",
     answer_key_text: "string >=800 chars",
-    checklist_rubric: "{ items: [{ text 10-500 chars, points 1-5, isCritical }] } — rubrik aktif harus 3-100 items, >=1 critical, total >=6 poin; gunakan hanya fakta substantif yang spesifik pada jawaban, tanpa boilerplate generik; kosongkan items utk nonaktif",
+    checklist_rubric: "{ items: [{ text 10-500 chars, points, isCritical }] } — Oral Board: 1-100 butir objektif unik, points=2, critical hanya inti/keselamatan. Mode lain: 5-7 butir, >=2 critical, total >=10. Kosongkan items utk nonaktif",
     media_notes: "array",
     created_by_email: "string email",
   },
@@ -162,7 +162,11 @@ Deno.serve(async (req) => {
       // Kosongkan items untuk menonaktifkan rubric (rubric_mode='none')
       const mode = items.length > 0 ? "checklist" : "none";
 
-      const rubricQualityError = getRubricQualityError(items);
+      const { data: existingMode, error: modeError } = await supabase
+        .from("clinical_cases").select("exam_mode").eq("id", id).maybeSingle();
+      if (modeError) return json(500, { error: "Unable to read case mode" });
+      if (!existingMode) return json(404, { error: "Case not found", id });
+      const rubricQualityError = getRubricQualityError(items, data.exam_mode ?? existingMode.exam_mode);
       if (rubricQualityError) {
         return json(400, { error: rubricQualityError });
       }

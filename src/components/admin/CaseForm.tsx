@@ -227,7 +227,7 @@ const CaseForm = ({ existingCase, onClose }: CaseFormProps) => {
         />
       </div>
 
-      <RubricBuilder data={rubricData} onChange={setRubricData} />
+      <RubricBuilder data={rubricData} onChange={setRubricData} examMode={examMode} />
 
       {existingCase?.id && (
         <>

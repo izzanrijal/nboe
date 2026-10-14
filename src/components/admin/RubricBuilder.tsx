@@ -21,11 +21,13 @@ interface RubricBuilderProps {
   data: RubricData;
   onChange: (data: RubricData) => void;
   disabled?: boolean;
+  examMode?: string;
 }
 
-const RubricBuilder = ({ data, onChange, disabled = false }: RubricBuilderProps) => {
+const RubricBuilder = ({ data, onChange, disabled = false, examMode }: RubricBuilderProps) => {
+  const isOralBoard = examMode === "oral_board";
   const [newText, setNewText] = useState("");
-  const [newPoints, setNewPoints] = useState(10);
+  const [newPoints, setNewPoints] = useState(2);
 
   const totalPoints = data.items.reduce((sum, item) => sum + item.points, 0);
 
@@ -35,10 +37,10 @@ const RubricBuilder = ({ data, onChange, disabled = false }: RubricBuilderProps)
     if (!trimmed) return;
     onChange({
       ...data,
-      items: [...data.items, { text: trimmed, points: newPoints, isCritical: false }],
+      items: [...data.items, { text: trimmed, points: isOralBoard ? 2 : newPoints, isCritical: false }],
     });
     setNewText("");
-    setNewPoints(10);
+    setNewPoints(2);
   };
 
   const removeItem = (index: number) => {
@@ -89,11 +91,11 @@ const RubricBuilder = ({ data, onChange, disabled = false }: RubricBuilderProps)
             <Input
               type="number"
               min={1}
-              value={newPoints}
+              value={isOralBoard ? 2 : newPoints}
               onChange={(e) => setNewPoints(Number(e.target.value))}
               className="w-20"
               placeholder="Poin"
-              disabled={disabled}
+              disabled={disabled || isOralBoard}
             />
             <Button
               type="button"
@@ -125,15 +127,17 @@ const RubricBuilder = ({ data, onChange, disabled = false }: RubricBuilderProps)
                     />
                     <AlertTriangle className={`h-3.5 w-3.5 ${item.isCritical ? "text-destructive" : "text-muted-foreground/40"}`} />
                   </div>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => removeItem(i)}
                     disabled={disabled}
                     aria-label={`Hapus item daftar tilik ${i + 1}`}
                     className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <X className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
